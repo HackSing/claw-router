@@ -235,16 +235,22 @@ function scoreLength(message: string): number {
  * Detect if message is in a code/tech context (used to suppress creativity false positives).
  */
 function isCodeContext(lower: string): boolean {
-  const codeSignals = [
-    '脚本', '代码', '函数', '程序', '接口', '数据库', '爬虫', '算法', '组件', '模块',
-    '部署', '编译', '调试', 'debug', '排序', '搜索', '重构', '优化', '并发', '异步',
-    'script', 'code', 'function', 'api', 'database', 'algorithm', 'deploy', 'compile',
-    'python', 'javascript', 'typescript', 'rust', 'java', 'golang', 'sql', 'css', 'html',
-    'docker', 'kubernetes', 'react', 'vue', 'node', 'npm', 'pip', 'git',
-    'csv', 'json', 'yaml', 'xml', 'http', 'tcp', 'udp',
-    '```', 'import ', 'def ', 'class ', 'const ', 'let ', 'var ',
+  // 更精确的代码信号检测
+  const codePatterns = [
+    // 编程语言和技术栈
+    /\b(?:python|javascript|typescript|rust|java|golang|sql|css|html|c\+\+|c#|php)\b/,
+    // 开发工具和框架
+    /\b(?:docker|kubernetes|react|vue|node|npm|pip|git)\b/,
+    // 代码相关操作
+    /\b(?:脚本|代码|函数|程序|接口|数据库|爬虫|算法|组件|模块|部署|编译|调试|debug|排序|搜索|重构|优化|并发|异步)\b/,
+    // 代码语法特征
+    /```[\s\S]*?```/, // 代码块
+    /import\s+.*?from|def\s+\w+|class\s+\w+|const\s+\w+|let\s+\w+|var\s+\w+/,
+    // 文件格式
+    /\.(?:py|js|ts|jsx|tsx|java|go|sql|css|html|json|yaml|xml)$/
   ];
-  return codeSignals.some(s => lower.includes(s));
+  
+  return codePatterns.some(pattern => pattern.test(lower));
 }
 
 /**
@@ -252,24 +258,18 @@ function isCodeContext(lower: string): boolean {
  * Used to distinguish "write a simple script" from "build a complete system".
  */
 function hasComplexitySignals(lower: string): boolean {
-  const signals = [
-    // Multi-requirement (must have enumeration or explicit multi-part)
-    '包括', '要求', '支持', '处理',
-    '完整', '全面', '整个', '从零',
-    // Multi-step connectives
-    '首先', '然后', '接着', '最后', '并且',
-    '同时', '以及', '还要', '另外',
-    // System-level
-    '系统', '架构', '方案', '策略',
-    '高可用', '高并发', '分布式', '微服务',
-    '迁移', '回滚', '重构',
-    // English equivalents
-    'including', 'complete', 'comprehensive', 'entire',
-    'system', 'architecture', 'strategy',
-    'with proper', 'handle multiple', 'support',
-    'migration', 'rollback', 'refactor',
+  const complexityPatterns = [
+    // 系统级需求
+    /\b(?:系统|架构|方案|策略|高可用|高并发|分布式|微服务|迁移|回滚|重构)\b/,
+    // 多需求模式
+    /包括.*?、.*?、|要求.*?、.*?、|需要.*?和.*?和/,
+    // 完整项目需求
+    /\b(?:完整|全面|整个|从零开始|从无到有)\b/,
+    // 复杂流程
+    /首先.*?然后.*?接着.*?最后/
   ];
-  return signals.some(s => lower.includes(s));
+  
+  return complexityPatterns.some(pattern => pattern.test(lower));
 }
 
 function lerp(x0: number, x1: number, y0: number, y1: number, x: number): number {
