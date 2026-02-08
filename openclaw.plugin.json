@@ -1,0 +1,40 @@
+{
+  "id": "claw-router",
+  "name": "Claw Router — Smart Model Routing",
+  "version": "1.0.0",
+  "description": "Intelligent model routing based on message complexity analysis. 8-dimension scoring engine with bilingual (CN/EN) support.",
+  "author": "aiwaretop",
+  "license": "MIT",
+  "entry": "index.ts",
+  "configSchema": {
+    "type": "object",
+    "properties": {
+      "tiers": {
+        "type": "object",
+        "description": "Per-tier model mapping. Keys: TRIVIAL, SIMPLE, MODERATE, COMPLEX, EXPERT. Each value: { primary: string, fallback?: string }"
+      },
+      "thresholds": {
+        "type": "array",
+        "description": "Four score boundaries: [trivial→simple, simple→moderate, moderate→complex, complex→expert]",
+        "items": { "type": "number" },
+        "minItems": 4,
+        "maxItems": 4,
+        "default": [0.15, 0.35, 0.55, 0.75]
+      },
+      "scoring": {
+        "type": "object",
+        "properties": {
+          "weights": {
+            "type": "object",
+            "description": "Override scoring dimension weights. Keys: reasoning, codeTech, taskSteps, domainExpert, outputComplex, creativity, contextDepend, messageLength"
+          }
+        }
+      },
+      "logging": {
+        "type": "boolean",
+        "description": "Enable verbose routing decision logs",
+        "default": false
+      }
+    }
+  }
+}

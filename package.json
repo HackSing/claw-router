@@ -1,0 +1,37 @@
+{
+  "name": "@aiwaretop/claw-router",
+  "version": "1.0.0",
+  "description": "Intelligent model routing plugin for OpenClaw — routes messages to optimal AI models based on 8-dimension complexity scoring",
+  "main": "index.ts",
+  "author": "aiwaretop",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/HackSing/claw-router.git"
+  },
+  "keywords": [
+    "openclaw",
+    "plugin",
+    "model-routing",
+    "ai",
+    "llm",
+    "smart-routing",
+    "complexity-analysis"
+  ],
+  "scripts": {
+    "test": "npx tsx --test test/*.test.ts",
+    "test:verbose": "npx tsx --test test/*.test.ts 2>&1"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "^5.4.0"
+  },
+  "files": [
+    "index.ts",
+    "src/",
+    "openclaw.plugin.json",
+    "README.md",
+    "README.zh-CN.md",
+    "LICENSE"
+  ]
+}
