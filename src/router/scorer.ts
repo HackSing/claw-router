@@ -44,11 +44,22 @@ export function scoreDimensions(
         );
         break;
       case Dimension.CREATIVITY:
-        // Boost creativity with task-request detection
+        // Boost creativity with task-request detection, but suppress if code/tech context
         raw = Math.max(
           scoreKeywords(lower, KEYWORDS[dim]),
           scoreCreativeRequest(lower),
         );
+        // Suppress creativity score when message is clearly a code/tech request
+        if (isCodeContext(lower)) {
+          raw = raw * 0.15; // heavily dampen — "帮我写一个脚本" is not creative writing
+        }
+        break;
+      case Dimension.CODE_TECH:
+        raw = scoreKeywords(lower, KEYWORDS[dim]);
+        // Dampen code score for simple single-task requests (short + no multi-step signals)
+        if (raw > 0 && !hasComplexitySignals(lower) && message.length < 60) {
+          raw = raw * 0.50;
+        }
         break;
       default:
         raw = scoreKeywords(lower, KEYWORDS[dim]);
@@ -219,6 +230,47 @@ function scoreLength(message: string): number {
 }
 
 // ── Utilities ───────────────────────────────────────────────────────────────
+
+/**
+ * Detect if message is in a code/tech context (used to suppress creativity false positives).
+ */
+function isCodeContext(lower: string): boolean {
+  const codeSignals = [
+    '脚本', '代码', '函数', '程序', '接口', '数据库', '爬虫', '算法', '组件', '模块',
+    '部署', '编译', '调试', 'debug', '排序', '搜索', '重构', '优化', '并发', '异步',
+    'script', 'code', 'function', 'api', 'database', 'algorithm', 'deploy', 'compile',
+    'python', 'javascript', 'typescript', 'rust', 'java', 'golang', 'sql', 'css', 'html',
+    'docker', 'kubernetes', 'react', 'vue', 'node', 'npm', 'pip', 'git',
+    'csv', 'json', 'yaml', 'xml', 'http', 'tcp', 'udp',
+    '```', 'import ', 'def ', 'class ', 'const ', 'let ', 'var ',
+  ];
+  return codeSignals.some(s => lower.includes(s));
+}
+
+/**
+ * Check if message has signals of genuine complexity (multi-step, multi-requirement, etc.).
+ * Used to distinguish "write a simple script" from "build a complete system".
+ */
+function hasComplexitySignals(lower: string): boolean {
+  const signals = [
+    // Multi-requirement (must have enumeration or explicit multi-part)
+    '包括', '要求', '支持', '处理',
+    '完整', '全面', '整个', '从零',
+    // Multi-step connectives
+    '首先', '然后', '接着', '最后', '并且',
+    '同时', '以及', '还要', '另外',
+    // System-level
+    '系统', '架构', '方案', '策略',
+    '高可用', '高并发', '分布式', '微服务',
+    '迁移', '回滚', '重构',
+    // English equivalents
+    'including', 'complete', 'comprehensive', 'entire',
+    'system', 'architecture', 'strategy',
+    'with proper', 'handle multiple', 'support',
+    'migration', 'rollback', 'refactor',
+  ];
+  return signals.some(s => lower.includes(s));
+}
 
 function lerp(x0: number, x1: number, y0: number, y1: number, x: number): number {
   return y0 + ((x - x0) / (x1 - x0)) * (y1 - y0);
