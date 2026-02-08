@@ -19,6 +19,47 @@ User: "设计分布式架构"  → EXPERT   → claude-opus-4       (best)
 
 ---
 
+## Quick Start
+
+### 1. Install
+
+```bash
+# In your OpenClaw workspace
+cd ~/.openclaw
+npm install @aiwaretop/claw-router
+```
+
+### 2. Enable the Plugin
+
+Add to your OpenClaw config:
+
+```json
+{
+  "plugins": ["@aiwaretop/claw-router"]
+}
+```
+
+### 3. Configure (Optional)
+
+```json
+{
+  "plugins": {
+    "@aiwaretop/claw-router": {
+      "tiers": {
+        "TRIVIAL":  { "primary": "volcengine/doubao-seed-code" },
+        "SIMPLE":   { "primary": "volcengine/doubao-seed-code" },
+        "MODERATE": { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
+        "COMPLEX":  { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
+        "EXPERT":   { "primary": "api-proxy-claude/claude-opus-4-6" }
+      },
+      "logging": true
+    }
+  }
+}
+```
+
+---
+
 ## Architecture
 
 ```
@@ -74,47 +115,6 @@ User: "设计分布式架构"  → EXPERT   → claude-opus-4       (best)
               ┌────────────────┐
               │  Model Selection│ → primary / fallback
               └────────────────┘
-```
-
----
-
-## Quick Start
-
-### 1. Install
-
-```bash
-# In your OpenClaw workspace
-cd ~/.openclaw
-npm install @aiwaretop/claw-router
-```
-
-### 2. Enable the Plugin
-
-Add to your OpenClaw config:
-
-```json
-{
-  "plugins": ["@aiwaretop/claw-router"]
-}
-```
-
-### 3. Configure (Optional)
-
-```json
-{
-  "plugins": {
-    "@aiwaretop/claw-router": {
-      "tiers": {
-        "TRIVIAL":  { "primary": "volcengine/doubao-seed-code" },
-        "SIMPLE":   { "primary": "volcengine/doubao-seed-code" },
-        "MODERATE": { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
-        "COMPLEX":  { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
-        "EXPERT":   { "primary": "api-proxy-claude/claude-opus-4-6" }
-      },
-      "logging": true
-    }
-  }
-}
 ```
 
 ---
