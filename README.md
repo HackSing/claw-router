@@ -248,6 +248,56 @@ claw-router/
 
 ---
 
+## Roadmap
+
+See [ROADMAP.md](./ROADMAP.md) for detailed development plans.
+
+### Recent Updates ✅
+
+**v1.1.0 (In Progress)**
+- ✅ Improved code context detection with regex patterns
+- ✅ Enhanced complexity signal matching
+- 📝 Adding more test cases
+- 📝 Expanding keyword library
+
+### Coming Soon 🚀
+
+- **Learning & Feedback** — Record routing decisions and adapt based on user corrections
+- **Context-Aware Routing** — Consider conversation history for better decisions
+- **Visual Dashboard** — Web UI for routing analytics and 8-dimension radar charts
+- **More Model Providers** — Hugging Face, Together, Groq, local models (Ollama)
+
+---
+
+## Contributing
+
+We welcome contributions! Please see [ROADMAP.md](./ROADMAP.md#贡献指南) for details.
+
+### Quick Start
+
+```bash
+# Fork and clone
+git clone https://github.com/your-username/claw-router.git
+cd claw-router
+npm install
+npm test
+```
+
+### Reporting Issues
+
+- Use GitHub Issues with provided templates
+- Include environment info and reproduction steps
+- Check existing issues first
+
+---
+
+## Community
+
+- **GitHub Discussions**: https://github.com/HackSing/claw-router/discussions
+- **Twitter/X**: [@WareAi996](https://x.com/WareAi996)
+
+---
+
 ## License
 
 [MIT](LICENSE) © aiwaretop
