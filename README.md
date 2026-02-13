@@ -31,28 +31,43 @@ npm install @aiwaretop/claw-router
 
 ### 2. Enable the Plugin
 
-Add to your OpenClaw config:
+Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
 
 ```json
 {
-  "plugins": ["@aiwaretop/claw-router"]
+  "plugins": {
+    "enabled": true,
+    "allow": ["claw-router"],
+    "entries": {
+      "claw-router": {
+        "enabled": true
+      }
+    }
+  }
 }
 ```
 
 ### 3. Configure (Optional)
 
+**Important:** Plugin config must be placed under the `config` key:
+
 ```json
 {
   "plugins": {
-    "@aiwaretop/claw-router": {
-      "tiers": {
-        "TRIVIAL":  { "primary": "volcengine/doubao-seed-code" },
-        "SIMPLE":   { "primary": "volcengine/doubao-seed-code" },
-        "MODERATE": { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
-        "COMPLEX":  { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
-        "EXPERT":   { "primary": "api-proxy-claude/claude-opus-4-6" }
-      },
-      "logging": true
+    "entries": {
+      "claw-router": {
+        "enabled": true,
+        "config": {
+          "tiers": {
+            "TRIVIAL":  { "primary": "volcengine/doubao-seed-code" },
+            "SIMPLE":   { "primary": "volcengine/doubao-seed-code" },
+            "MODERATE": { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
+            "COMPLEX":  { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
+            "EXPERT":   { "primary": "api-proxy-claude/claude-opus-4-6" }
+          },
+          "logging": true
+        }
+      }
     }
   }
 }

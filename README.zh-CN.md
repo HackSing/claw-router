@@ -79,28 +79,43 @@ npm install @aiwaretop/claw-router
 
 ### 2. 启用插件
 
-在 OpenClaw 配置中添加：
+在 OpenClaw 配置中添加（`~/.openclaw/openclaw.json`）：
 
 ```json
 {
-  "plugins": ["@aiwaretop/claw-router"]
+  "plugins": {
+    "enabled": true,
+    "allow": ["claw-router"],
+    "entries": {
+      "claw-router": {
+        "enabled": true
+      }
+    }
+  }
 }
 ```
 
 ### 3. 配置（可选）
 
+**重要：** 插件配置必须放在 `config` 字段下：
+
 ```json
 {
   "plugins": {
-    "@aiwaretop/claw-router": {
-      "tiers": {
-        "TRIVIAL":  { "primary": "volcengine/doubao-seed-code" },
-        "SIMPLE":   { "primary": "volcengine/doubao-seed-code" },
-        "MODERATE": { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
-        "COMPLEX":  { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
-        "EXPERT":   { "primary": "api-proxy-claude/claude-opus-4-6" }
-      },
-      "logging": true
+    "entries": {
+      "claw-router": {
+        "enabled": true,
+        "config": {
+          "tiers": {
+            "TRIVIAL":  { "primary": "volcengine/doubao-seed-code" },
+            "SIMPLE":   { "primary": "volcengine/doubao-seed-code" },
+            "MODERATE": { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
+            "COMPLEX":  { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
+            "EXPERT":   { "primary": "api-proxy-claude/claude-opus-4-6" }
+          },
+          "logging": true
+        }
+      }
     }
   }
 }
