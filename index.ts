@@ -224,9 +224,32 @@ const clawRouterPlugin = {
         return;
       }
 
+      // Read session store to get actual model used
+      let modelDisplay = 'unknown';
+      if (ctx.sessionKey) {
+        try {
+          const agentId = parseAgentId(ctx.sessionKey);
+          const storePath = path.join(
+            process.env.HOME || '/home/ubuntu',
+            '.openclaw', 'agents', agentId, 'sessions', 'sessions.json',
+          );
+          if (fs.existsSync(storePath)) {
+            const raw = fs.readFileSync(storePath, 'utf-8');
+            const store = JSON.parse(raw);
+            const entry = store[ctx.sessionKey];
+            if (entry) {
+              const provider = entry.providerOverride || entry.modelProvider || 'unknown';
+              const model = entry.modelOverride || entry.model || 'unknown';
+              modelDisplay = `${provider}/${model}`;
+            }
+          }
+        } catch (err) {
+          console.log(`[claw-router DEBUG] Failed to read model from session: ${err}`);
+        }
+      }
+
       const { input, output, total } = event.tokenUsage;
-      const model = ctx.agentId || 'unknown';
-      const msg = `[claw-router] Tokens: ${input} in / ${output} out (total: ${total ?? input + output}, duration: ${event.durationMs ?? 0}ms, model: ${model})`;
+      const msg = `[claw-router] Tokens: ${input} in / ${output} out (total: ${total ?? input + output}, duration: ${event.durationMs ?? 0}ms, model: ${modelDisplay})`;
       console.log(msg);
       log.info(msg);
     });
