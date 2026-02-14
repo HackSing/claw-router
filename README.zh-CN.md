@@ -2,7 +2,7 @@
 
 > **[OpenClaw](https://openclaw.app) 智能模型路由插件** — 根据消息复杂度自动选择最佳模型。
 
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![AIWare Community License](https://img.shields.io/badge/license-AIWare%20Community%20License-blue.svg)](LICENSE)
 [![OpenClaw Plugin](https://img.shields.io/badge/OpenClaw-plugin-purple.svg)](https://openclaw.app)
 
 [English](README.md) | **中文**
@@ -222,4 +222,4 @@ npm test
 
 ## 许可证
 
-[MIT](LICENSE) © aiwaretop
+[AIWare Community License](LICENSE) © aiwaretop

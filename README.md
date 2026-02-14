@@ -2,7 +2,7 @@
 
 > **Intelligent model routing for [OpenClaw](https://openclaw.app)** — route every message to the right model, automatically.
 
-[![MIT License](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![AIWare Community License](https://img.shields.io/badge/license-AIWare%20Community%20License-blue.svg)](LICENSE)
 [![OpenClaw Plugin](https://img.shields.io/badge/OpenClaw-plugin-purple.svg)](https://openclaw.app)
 
 ---
