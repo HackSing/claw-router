@@ -315,4 +315,4 @@ npm test
 
 ## License
 
-[MIT](LICENSE) © aiwaretop
+[AIWare Community License](LICENSE) © aiwaretop
