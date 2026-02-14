@@ -7,7 +7,11 @@
 
 import type { RouteDecision } from './router/types';
 
-export function logDecision(decision: RouteDecision, logging: boolean): void {
+interface Logger {
+  info: (msg: string) => void;
+}
+
+export function logDecision(decision: RouteDecision, logging: boolean, logger?: Logger): void {
   if (!logging) return;
 
   const { tier, model, score, latencyMs } = decision;
@@ -20,7 +24,7 @@ export function logDecision(decision: RouteDecision, logging: boolean): void {
     ? `  ⚡ Override: ${score.overrideApplied}\n`
     : '';
 
-  console.log(
+  const message =
     `[claw-router] ─── Route Decision ───\n` +
     `  Tier:       ${tier}\n` +
     `  Model:      ${model}\n` +
@@ -28,6 +32,9 @@ export function logDecision(decision: RouteDecision, logging: boolean): void {
     override +
     (dims ? `  Dimensions:\n${dims}\n` : '') +
     `  Latency:    ${latencyMs} ms\n` +
-    `────────────────────────────────────`
-  );
+    `────────────────────────────────────`;
+
+  // Use provided logger or fall back to console
+  // Use console.log to ensure visibility in OpenClaw logs
+  console.log(message);
 }

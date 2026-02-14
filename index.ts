@@ -53,8 +53,20 @@ function parseModelRef(ref: string): { provider: string; model: string } {
 }
 
 /**
+ * Parse agentId from sessionKey.
+ * sessionKey format: "agent:<agentId>:<sessionId>"
+ */
+function parseAgentId(sessionKey: string): string {
+  const parts = sessionKey.split(':');
+  if (parts.length >= 2 && parts[0] === 'agent') {
+    return parts[1];
+  }
+  return 'main';
+}
+
+/**
  * Directly update session store to set model override.
- * Reads/writes ~/.openclaw/agents/main/sessions/sessions.json.
+ * Reads/writes ~/.openclaw/agents/<agentId>/sessions/sessions.json.
  */
 function applyModelToSession(
   sessionKey: string,
@@ -62,9 +74,10 @@ function applyModelToSession(
   log: { info: (m: string) => void; warn?: (m: string) => void },
 ): boolean {
   try {
+    const agentId = parseAgentId(sessionKey);
     const storePath = path.join(
       process.env.HOME || '/home/ubuntu',
-      '.openclaw', 'agents', 'main', 'sessions', 'sessions.json',
+      '.openclaw', 'agents', agentId, 'sessions', 'sessions.json',
     );
 
     if (!fs.existsSync(storePath)) {
@@ -163,7 +176,7 @@ const clawRouterPlugin = {
       // Run the router
       const decision = route(userMessage, pluginConfig);
       trackDecision(decision);
-      logDecision(decision, pluginConfig.logging);
+      logDecision(decision, pluginConfig.logging, log);
 
       const targetModel = decision.model;
       if (!targetModel || targetModel === 'default') return;
@@ -189,6 +202,36 @@ const clawRouterPlugin = {
     });
 
     // ══════════════════════════════════════════════════════════════════════
+    // CORE: agent_end hook — log token usage after agent completes
+    // ══════════════════════════════════════════════════════════════════════
+    api.on('agent_end', async (
+      event: {
+        messages: unknown[];
+        success: boolean;
+        error?: string;
+        durationMs?: number;
+        tokenUsage?: { input: number; output: number; total?: number };
+      },
+      ctx: { sessionKey?: string; agentId?: string },
+    ) => {
+      console.log(`[claw-router DEBUG] agent_end hook triggered, tokenUsage:`, event.tokenUsage);
+      if (!pluginConfig.logging) {
+        console.log(`[claw-router DEBUG] logging disabled, skipping`);
+        return;
+      }
+      if (!event.tokenUsage) {
+        console.log(`[claw-router DEBUG] no tokenUsage, skipping`);
+        return;
+      }
+
+      const { input, output, total } = event.tokenUsage;
+      const model = ctx.agentId || 'unknown';
+      const msg = `[claw-router] Tokens: ${input} in / ${output} out (total: ${total ?? input + output}, duration: ${event.durationMs ?? 0}ms, model: ${model})`;
+      console.log(msg);
+      log.info(msg);
+    });
+
+    // ══════════════════════════════════════════════════════════════════════
     // Agent Tool: smart_route
     // ══════════════════════════════════════════════════════════════════════
     api.registerTool({
@@ -209,7 +252,7 @@ const clawRouterPlugin = {
       async execute(_id: string, params: { message: string }) {
         const decision = route(params.message, pluginConfig);
         trackDecision(decision);
-        logDecision(decision, pluginConfig.logging);
+        logDecision(decision, pluginConfig.logging, log);
         return {
           content: [{
             type: 'text' as const,
@@ -334,7 +377,7 @@ const clawRouterPlugin = {
       }
       const decision = route(message, pluginConfig);
       trackDecision(decision);
-      logDecision(decision, pluginConfig.logging);
+      logDecision(decision, pluginConfig.logging, log);
       respond(true, decision);
     });
 
