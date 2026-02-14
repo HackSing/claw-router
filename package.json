@@ -7,7 +7,7 @@
   "license": "AIWare Community License",
   "repository": {
     "type": "git",
-    "url": "https://github.com/HackSing/claw-router.git"
+    "url": "git+https://github.com/HackSing/claw-router.git"
   },
   "keywords": [
     "openclaw",
