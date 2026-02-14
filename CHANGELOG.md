@@ -8,13 +8,16 @@ All notable changes to this project will be documented in this file.
 - **Token Usage Logging**: Added `agent_end` hook listener that logs token consumption after each agent completion.
   - Input tokens, output tokens, and total tokens
   - Duration of the agent run
-  - Agent ID for context
-  - Requires OpenClaw >= 2026.2.14+ with tokenUsage field in `PluginHookAgentEndEvent`
+  - Actual model name (provider/model) for context
+  - Requires OpenClaw with `tokenUsage` field support in `agent_end` hook
 
 ### Technical Details
 - Modified `index.ts`: Added `agent_end` hook handler that extracts `tokenUsage` from event and logs it
-- Log format: `[claw-router] Tokens: <input> in / <output> out (total: <total>, duration: <duration>ms, model: <agentId>)`
+- Log format: `[claw-router] Tokens: <input> in / <output> out (total: <total>, duration: <duration>ms, model: <provider/model>)`
 - Requires `logging: true` in plugin config (default: false)
+
+### Note
+This feature requires OpenClaw to expose token usage data in the `agent_end` hook. A PR has been submitted to OpenClaw (PR #16049). Until it's merged, users need to manually apply the patch or use a fork with this feature.
 
 ## [1.0.3] - 2026-02-14
 

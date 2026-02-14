@@ -1,6 +1,6 @@
 {
   "name": "@aiwaretop/claw-router",
-  "version": "1.0.0",
+  "version": "1.0.4",
   "description": "Intelligent model routing plugin for OpenClaw — routes messages to optimal AI models based on 8-dimension complexity scoring",
   "main": "index.ts",
   "author": "aiwaretop",
