@@ -19,17 +19,47 @@ User: "设计分布式架构"  → EXPERT   → claude-opus-4       (best)
 
 ---
 
-## Quick Start
+## Installation
 
-### 1. Install
+You have two options to install claw-router:
+
+### Option 1: Install from npm (Recommended)
 
 ```bash
 # In your OpenClaw workspace
 cd ~/.openclaw
+
+# Install the package
 npm install @aiwaretop/claw-router
+
+# Copy to extensions directory (required!)
+cp -r node_modules/@aiwaretop/claw-router ~/.openclaw/extensions/claw-router
 ```
 
-### 2. Enable the Plugin
+**Note:** OpenClaw only loads plugins from `~/.openclaw/extensions/` by default. You must copy the files manually after npm install.
+
+### Option 2: Install from source
+
+```bash
+# Clone the repository
+git clone https://github.com/HackSing/claw-router.git
+
+# Install dependencies
+cd claw-router
+npm install
+
+# Compile TypeScript to JavaScript
+npx tsc
+
+# Copy to extensions directory
+cp -r . ~/.openclaw/extensions/claw-router
+```
+
+---
+
+## Quick Start
+
+### 1. Enable the Plugin
 
 Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
 
