@@ -215,7 +215,7 @@ await rpc('route.stats');
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `tiers` | `Record<Tier, { primary, fallback? }>` | all `"default"` | Model mapping per tier |
-| `thresholds` | `[n, n, n, n]` | `[0.15, 0.35, 0.55, 0.75]` | Score boundaries between tiers |
+| `thresholds` | `[n, n, n, n]` | `[0.15, 0.40, 0.55, 0.75]` | Score boundaries between tiers |
 | `scoring.weights` | `Record<Dimension, number>` | See below | Override dimension weights |
 | `logging` | `boolean` | `false` | Enable verbose decision logs |
 

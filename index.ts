@@ -120,38 +120,6 @@ const clawRouterPlugin = {
   id: 'claw-router',
   name: 'Claw Router — Smart Model Routing',
 
-  configSchema: {
-    type: 'object' as const,
-    additionalProperties: false as const,
-    properties: {
-      tiers: {
-        type: 'object' as const,
-        description: 'Per-tier model mapping. Keys: TRIVIAL, SIMPLE, MODERATE, COMPLEX, EXPERT',
-      },
-      thresholds: {
-        type: 'array' as const,
-        description: 'Four score boundaries [trivial→simple, simple→moderate, moderate→complex, complex→expert]',
-        items: { type: 'number' as const },
-        minItems: 4,
-        maxItems: 4,
-      },
-      scoring: {
-        type: 'object' as const,
-        properties: {
-          weights: {
-            type: 'object' as const,
-            description: 'Override dimension weights',
-          },
-        },
-      },
-      logging: {
-        type: 'boolean' as const,
-        description: 'Enable verbose routing logs',
-        default: false,
-      },
-    },
-  },
-
   register(api: any) {
     const rawConfig = api.pluginConfig as RouterConfig | undefined;
     pluginConfig = resolveConfig(rawConfig);

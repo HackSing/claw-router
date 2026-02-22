@@ -16,11 +16,28 @@
     "properties": {
       "tiers": {
         "type": "object",
-        "description": "Per-tier model mapping. Example: { TRIVIAL: { primary: qiniu/z-ai/glm-5 } }"
+        "description": "Per-tier model mapping. Keys: TRIVIAL, SIMPLE, MODERATE, COMPLEX, EXPERT"
+      },
+      "thresholds": {
+        "type": "array",
+        "description": "Four score boundaries [trivial→simple, simple→moderate, moderate→complex, complex→expert]",
+        "items": { "type": "number" },
+        "minItems": 4,
+        "maxItems": 4
+      },
+      "scoring": {
+        "type": "object",
+        "properties": {
+          "weights": {
+            "type": "object",
+            "description": "Override dimension weights"
+          }
+        }
       },
       "logging": {
         "type": "boolean",
-        "description": "Enable verbose routing decision logs"
+        "description": "Enable verbose routing logs",
+        "default": false
       }
     }
   }

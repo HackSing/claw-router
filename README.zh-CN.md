@@ -199,7 +199,7 @@ await rpc('route.stats');
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `tiers` | `Record<Tier, { primary, fallback? }>` | 全部 `"default"` | 每个 Tier 对应的模型 |
-| `thresholds` | `[n, n, n, n]` | `[0.15, 0.35, 0.55, 0.75]` | Tier 分界阈值 |
+| `thresholds` | `[n, n, n, n]` | `[0.15, 0.40, 0.55, 0.75]` | Tier 分界阈值 |
 | `scoring.weights` | `Record<Dimension, number>` | 见下表 | 覆盖维度权重 |
 | `logging` | `boolean` | `false` | 启用详细路由日志 |
 
