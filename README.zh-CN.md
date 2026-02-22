@@ -137,6 +137,7 @@ cp -r . ~/.openclaw/extensions/claw-router
       "claw-router": {
         "enabled": true,
         "config": {
+          "thresholds": [0.15, 0.40, 0.55, 0.75],
           "tiers": {
             "TRIVIAL":  { "primary": "volcengine/doubao-seed-code" },
             "SIMPLE":   { "primary": "volcengine/doubao-seed-code" },
