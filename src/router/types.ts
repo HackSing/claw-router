@@ -51,7 +51,7 @@ export const DEFAULT_WEIGHTS: Record<Dimension, number> = {
 };
 
 /** Default tier thresholds: [TRIVIAL→SIMPLE, SIMPLE→MODERATE, MODERATE→COMPLEX, COMPLEX→EXPERT] */
-export const DEFAULT_THRESHOLDS: [number, number, number, number] = [0.15, 0.40, 0.55, 0.75];
+export const DEFAULT_THRESHOLDS: [number, number, number, number] = [0.20, 0.42, 0.58, 0.78];
 
 // ── Score Results ───────────────────────────────────────────────────────────
 

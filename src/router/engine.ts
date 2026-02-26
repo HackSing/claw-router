@@ -146,11 +146,12 @@ function mergeScores(
 // ── 内部工具 ────────────────────────────────────────────────────────────────
 
 /**
- * 校准函数：将原始加权和拉伸到 0–1 范围。
+ * Sigmoid 校准：将原始加权和映射到 0–1 范围。
+ * 参数经网格搜索优化（k=8, midpoint=0.18）。
+ * S 曲线在中间区间提供更好的 tier 分辨力。
  */
 function calibrate(x: number): number {
-  const stretched = Math.min(x / 0.50, 1.0);
-  return Math.pow(stretched, 0.75);
+  return 1 / (1 + Math.exp(-8 * (x - 0.18)));
 }
 
 /** 将 calibrated 分数映射到 tier。 */

@@ -91,7 +91,7 @@ Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
       "claw-router": {
         "enabled": true,
         "config": {
-          "thresholds": [0.15, 0.40, 0.55, 0.75],
+          "thresholds": [0.20, 0.42, 0.58, 0.78],
           "tiers": {
             "TRIVIAL":  { "primary": "volcengine/doubao-seed-code" },
             "SIMPLE":   { "primary": "volcengine/doubao-seed-code" },
@@ -219,7 +219,7 @@ await rpc('route.stats');
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `tiers` | `Record<Tier, { primary, fallback? }>` | all `"default"` | Model mapping per tier |
-| `thresholds` | `[n, n, n, n]` | `[0.15, 0.40, 0.55, 0.75]` | Score boundaries between tiers |
+| `thresholds` | `[n, n, n, n]` | `[0.20, 0.42, 0.58, 0.78]` | Score boundaries between tiers |
 | `scoring.weights` | `Record<Dimension, number>` | See below | Override dimension weights |
 | `logging` | `boolean` | `false` | Enable verbose decision logs |
 | `llmScoring.enabled` | `boolean` | `false` | Enable LLM-assisted scoring |
@@ -276,9 +276,9 @@ These take priority over scoring:
 
 3. **Weighted sum** — `rawSum = Σ(dimensionScore × weight)`
 
-4. **Sigmoid calibration** — `calibrated = σ(rawSum)` with `k=4, midpoint=0.5`
+4. **Sigmoid calibration** — `calibrated = 1 / (1 + exp(-k·(rawSum - midpoint)))` with grid-search optimized parameters: `k=8, midpoint=0.18`. The S-curve provides better tier discrimination in the mid-range.
 
-5. **Tier mapping** — Calibrated score mapped to tier via thresholds.
+5. **Tier mapping** — Calibrated score mapped to tier via thresholds `[0.20, 0.42, 0.58, 0.78]`.
 
 ---
 
