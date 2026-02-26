@@ -9,7 +9,10 @@
 
 ## Why?
 
-Not every message needs GPT-4 or Claude Opus. A "hello" can go to a fast, cheap model. A system-design question deserves the best. **Claw Router** makes this decision for you — locally, in under 1ms, with zero API calls.
+Not every message needs GPT-4 or Claude Opus. A "hello" can go to a fast, cheap model. A system-design question deserves the best. **Claw Router** makes this decision for you:
+
+- **Rule-only mode**: Local computation, < 1ms, zero API calls
+- **LLM-assisted mode**: Only triggers LLM when rule-based score is near tier boundaries (±0.08), ~70% messages skip LLM calls
 
 ```
 User: "hi"           → TRIVIAL  → doubao-seed-code     (fast, cheap)
@@ -219,6 +222,26 @@ await rpc('route.stats');
 | `thresholds` | `[n, n, n, n]` | `[0.15, 0.40, 0.55, 0.75]` | Score boundaries between tiers |
 | `scoring.weights` | `Record<Dimension, number>` | See below | Override dimension weights |
 | `logging` | `boolean` | `false` | Enable verbose decision logs |
+| `llmScoring.enabled` | `boolean` | `false` | Enable LLM-assisted scoring |
+| `llmScoring.model` | `string` | — | LLM model for classification |
+| `llmScoring.apiKey` | `string` | — | LLM API key |
+| `llmScoring.baseUrl` | `string` | — | LLM API base URL |
+| `llmScoring.apiPath` | `string` | `/v1/chat/completions` | API endpoint path |
+
+### LLM-Assisted Scoring
+
+```json
+{
+  "llmScoring": {
+    "enabled": true,
+    "model": "deepseek-ai/DeepSeek-V3-Chat",
+    "apiKey": "sk-xxx",
+    "baseUrl": "https://api.siliconflow.cn"
+  }
+}
+```
+
+LLM scoring **only triggers when the rule-based score falls within ±0.08 of a tier threshold**, skipping ~70% of messages. Includes a 3-second timeout with automatic fallback to rule-based results.
 
 ### Default Weights
 

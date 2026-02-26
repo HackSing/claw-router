@@ -1,35 +1,33 @@
 /**
  * @aiwaretop/claw-router — Engine Tests
  *
- * End-to-end tests: message → route() → correct tier.
- * Uses Node's built-in test runner (node:test).
+ * 端到端测试：message → route() → 正确的 tier。
+ * 使用 Node.js 内置 test runner (node:test)。
  */
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
-import { route, scoreOnly } from '../src/router/engine';
+import { route, scoreOnly, isNearBoundary } from '../src/router/engine';
 import { resolveConfig } from '../src/config';
-import { Tier, TIER_ORDER } from '../src/router/types';
+import { Tier, TIER_ORDER, DEFAULT_THRESHOLDS } from '../src/router/types';
 import { fixtures } from './fixtures';
 
 const config = resolveConfig();
 
-// ── Helper: allow ±1 tier tolerance for non-override edge cases ─────────
+// ── Helper: 允许 ±1 tier 容差 ─────────────────────────────────────────────
 function tierIndex(t: Tier): number { return TIER_ORDER.indexOf(t); }
 
 describe('Routing Engine — fixture tests', () => {
   for (const tc of fixtures) {
-    it(`[${tc.id}] ${tc.description} → ${tc.expectedTier}`, () => {
-      const decision = route(tc.message, config);
+    it(`[${tc.id}] ${tc.description} → ${tc.expectedTier}`, async () => {
+      const decision = await route(tc.message, config);
       const actual = decision.tier;
       const expected = tc.expectedTier;
 
       if (tc.isOverride) {
-        // Override cases must match exactly
         assert.equal(actual, expected,
           `Override: expected ${expected}, got ${actual} (rule: ${decision.score.overrideApplied})`);
       } else {
-        // Non-override: allow ±1 tier tolerance (scoring is heuristic)
         const diff = Math.abs(tierIndex(actual) - tierIndex(expected));
         assert.ok(diff <= 1,
           `Expected ~${expected} (±1 tier), got ${actual} (score: ${decision.score.calibrated.toFixed(4)})`);
@@ -39,8 +37,8 @@ describe('Routing Engine — fixture tests', () => {
 });
 
 describe('Routing Engine — core properties', () => {
-  it('latency < 5ms for typical message', () => {
-    const decision = route('请帮我写一个 Python 函数来排序数组', config);
+  it('latency < 5ms for typical message (no LLM)', async () => {
+    const decision = await route('请帮我写一个 Python 函数来排序数组', config);
     assert.ok(decision.latencyMs < 5, `Took ${decision.latencyMs} ms`);
   });
 
@@ -64,19 +62,34 @@ describe('Routing Engine — core properties', () => {
       `Complex (${complex.calibrated}) should score higher than simple (${simple.calibrated})`);
   });
 
-  it('explicit /model is not routed (caller responsibility)', () => {
-    // The router itself doesn't handle /model — the plugin entry skips calling route.
-    // But we ensure the router can still score such messages without error.
-    const decision = route('/model gpt-4 tell me a joke', config);
+  it('explicit /model is not routed (caller responsibility)', async () => {
+    const decision = await route('/model gpt-4 tell me a joke', config);
     assert.ok(decision.tier, 'Should still produce a tier');
   });
 
-  it('custom config overrides defaults', () => {
+  it('custom config overrides defaults', async () => {
     const custom = resolveConfig({
       tiers: { TRIVIAL: { primary: 'my-fast-model' } },
       thresholds: [0.10, 0.30, 0.50, 0.70],
     });
-    const decision = route('hi', custom);
+    const decision = await route('hi', custom);
     assert.equal(decision.model, 'my-fast-model');
+  });
+});
+
+describe('isNearBoundary — 边界检测', () => {
+  it('分数在阈值 ±0.08 内时返回 true', () => {
+    // DEFAULT_THRESHOLDS = [0.15, 0.40, 0.55, 0.75]
+    assert.ok(isNearBoundary(0.15, DEFAULT_THRESHOLDS));  // 正好在阈值上
+    assert.ok(isNearBoundary(0.10, DEFAULT_THRESHOLDS));  // 0.15 - 0.05
+    assert.ok(isNearBoundary(0.22, DEFAULT_THRESHOLDS));  // 0.15 + 0.07
+    assert.ok(isNearBoundary(0.45, DEFAULT_THRESHOLDS));  // 0.40 + 0.05
+    assert.ok(isNearBoundary(0.70, DEFAULT_THRESHOLDS));  // 0.75 - 0.05
+  });
+
+  it('分数远离所有阈值时返回 false', () => {
+    assert.ok(!isNearBoundary(0.00, DEFAULT_THRESHOLDS));
+    assert.ok(!isNearBoundary(0.28, DEFAULT_THRESHOLDS));
+    assert.ok(!isNearBoundary(0.90, DEFAULT_THRESHOLDS));
   });
 });

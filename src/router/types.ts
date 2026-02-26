@@ -8,11 +8,11 @@
 
 /** The five complexity tiers, ordered from simplest to hardest. */
 export enum Tier {
-  TRIVIAL  = 'TRIVIAL',
-  SIMPLE   = 'SIMPLE',
+  TRIVIAL = 'TRIVIAL',
+  SIMPLE = 'SIMPLE',
   MODERATE = 'MODERATE',
-  COMPLEX  = 'COMPLEX',
-  EXPERT   = 'EXPERT',
+  COMPLEX = 'COMPLEX',
+  EXPERT = 'EXPERT',
 }
 
 /** Ordered array for threshold-based lookups. */
@@ -28,26 +28,26 @@ export const TIER_ORDER: Tier[] = [
 
 /** The eight scoring dimensions. */
 export enum Dimension {
-  REASONING       = 'reasoning',
-  CODE_TECH       = 'codeTech',
-  TASK_STEPS      = 'taskSteps',
-  DOMAIN_EXPERT   = 'domainExpert',
-  OUTPUT_COMPLEX  = 'outputComplex',
-  CREATIVITY      = 'creativity',
-  CONTEXT_DEPEND  = 'contextDepend',
-  MESSAGE_LENGTH  = 'messageLength',
+  REASONING = 'reasoning',
+  CODE_TECH = 'codeTech',
+  TASK_STEPS = 'taskSteps',
+  DOMAIN_EXPERT = 'domainExpert',
+  OUTPUT_COMPLEX = 'outputComplex',
+  CREATIVITY = 'creativity',
+  CONTEXT_DEPEND = 'contextDepend',
+  MESSAGE_LENGTH = 'messageLength',
 }
 
 /** Default weights for each dimension (sum = 1.0). */
 export const DEFAULT_WEIGHTS: Record<Dimension, number> = {
-  [Dimension.REASONING]:       0.20,
-  [Dimension.CODE_TECH]:       0.18,
-  [Dimension.TASK_STEPS]:      0.15,
-  [Dimension.DOMAIN_EXPERT]:   0.12,
-  [Dimension.OUTPUT_COMPLEX]:  0.10,
-  [Dimension.CREATIVITY]:      0.10,
-  [Dimension.CONTEXT_DEPEND]:  0.08,
-  [Dimension.MESSAGE_LENGTH]:  0.07,
+  [Dimension.REASONING]: 0.20,
+  [Dimension.CODE_TECH]: 0.18,
+  [Dimension.TASK_STEPS]: 0.15,
+  [Dimension.DOMAIN_EXPERT]: 0.12,
+  [Dimension.OUTPUT_COMPLEX]: 0.10,
+  [Dimension.CREATIVITY]: 0.10,
+  [Dimension.CONTEXT_DEPEND]: 0.08,
+  [Dimension.MESSAGE_LENGTH]: 0.07,
 };
 
 /** Default tier thresholds: [TRIVIAL→SIMPLE, SIMPLE→MODERATE, MODERATE→COMPLEX, COMPLEX→EXPERT] */
@@ -97,12 +97,7 @@ export interface LlmScoringConfig {
   model?: string;
   apiKey?: string;
   baseUrl?: string;
-  fallbackModel?: string;
-  highSpeedMode?: boolean;
-  cache?: {
-    enabled: boolean;
-    maxEntries?: number;
-  };
+  apiPath?: string;
 }
 
 /** User-supplied plugin configuration (all optional — deep-merged with defaults). */

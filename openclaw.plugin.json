@@ -21,7 +21,9 @@
       "thresholds": {
         "type": "array",
         "description": "Four score boundaries [trivial→simple, simple→moderate, moderate→complex, complex→expert]",
-        "items": { "type": "number" },
+        "items": {
+          "type": "number"
+        },
         "minItems": 4,
         "maxItems": 4
       },
@@ -41,7 +43,7 @@
       },
       "llmScoring": {
         "type": "object",
-        "description": "LLM-based scoring configuration",
+        "description": "LLM-based scoring configuration. Only triggers when rule-based score is near tier boundaries (±0.08).",
         "properties": {
           "enabled": {
             "type": "boolean",
@@ -50,7 +52,7 @@
           },
           "model": {
             "type": "string",
-            "description": "LLM model for scoring (e.g., siliconflow/deepseek-ai/DeepSeek-V3-Chat)"
+            "description": "LLM model for scoring (e.g., deepseek-ai/DeepSeek-V3-Chat)"
           },
           "apiKey": {
             "type": "string",
@@ -60,10 +62,9 @@
             "type": "string",
             "description": "Base URL for LLM API"
           },
-          "highSpeedMode": {
-            "type": "boolean",
-            "description": "Enable async mode (faster but may miss first-time accuracy)",
-            "default": false
+          "apiPath": {
+            "type": "string",
+            "description": "API endpoint path (default: /v1/chat/completions)"
           }
         }
       }

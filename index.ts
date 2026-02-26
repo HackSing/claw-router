@@ -125,56 +125,65 @@ const clawRouterPlugin = {
     pluginConfig = resolveConfig(rawConfig);
 
     // Note: api.config does not contain providers (security limitation)
-    
+
     // Initialize LLM scorer if enabled
     if (pluginConfig.llmScoring?.enabled) {
       const llmConfig = pluginConfig.llmScoring;
-      
+
       // Get model from TRIVIAL tier by default (cheapest model)
       const model = llmConfig.model || pluginConfig.tiers[Tier.TRIVIAL]?.primary || 'deepseek-ai/DeepSeek-V3-Chat';
-      
+
       // Require user to configure apiKey and baseUrl
       if (!llmConfig.apiKey || !llmConfig.baseUrl) {
         api.logger.warn('[claw-router] LLM scoring requires apiKey and baseUrl in llmScoring config. LLM scoring disabled.');
       } else {
-        // Create LLM invocation function
+        // 创建 LLM 调用函数（带 3s 超时保护）
         const invokeLLM = async (modelName: string, prompt: string): Promise<string> => {
           const { apiKey, baseUrl, apiPath } = detectProviderFromModel(modelName, llmConfig);
-          
-          // Keep full model path for SiliconFlow (e.g., "deepseek-ai/DeepSeek-V3.2" stays as is)
-          // But remove "siliconflow/" prefix if present
+
+          // 保留完整模型路径（如 SiliconFlow 的 "deepseek-ai/DeepSeek-V3.2"）
+          // 但去掉 "siliconflow/" 前缀
           let actualModel = modelName;
           if (modelName.startsWith('siliconflow/')) {
             actualModel = modelName.substring('siliconflow/'.length);
           }
-          
-          console.log(`[claw-router] LLM API call: model=${actualModel}, provider=${apiKey.substring(0,10)}...`);
-          
-          const response = await fetch(`${baseUrl}${apiPath}`, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${apiKey}`,
-              'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-              model: actualModel,
-              messages: [{ role: 'user', content: prompt }],
-              temperature: 0.3,
-              max_tokens: 1024
-            })
-          });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`LLM API error: ${response.status} - ${errorText}`);
+          console.log(`[claw-router] LLM API 调用: model=${actualModel}`);
+
+          // 3 秒超时保护
+          const controller = new AbortController();
+          const timeout = setTimeout(() => controller.abort(), 3000);
+
+          try {
+            const response = await fetch(`${baseUrl}${apiPath}`, {
+              method: 'POST',
+              headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+              },
+              body: JSON.stringify({
+                model: actualModel,
+                messages: [{ role: 'user', content: prompt }],
+                temperature: 0.1,
+                max_tokens: 256
+              }),
+              signal: controller.signal,
+            });
+
+            if (!response.ok) {
+              const errorText = await response.text();
+              throw new Error(`LLM API 错误: ${response.status} - ${errorText}`);
+            }
+
+            const data = await response.json();
+            return data.choices?.[0]?.message?.content || '';
+          } finally {
+            clearTimeout(timeout);
           }
-
-          const data = await response.json();
-          return data.choices?.[0]?.message?.content || '';
         };
-        
+
         initLlmScorer(llmConfig, invokeLLM);
-        api.logger.info(`LLM scoring enabled: model=${model}, highSpeedMode=${llmConfig.highSpeedMode}`);
+        api.logger.info(`[claw-router] LLM 评分已启用: model=${model}`);
       }
     }
 
@@ -185,11 +194,11 @@ const clawRouterPlugin = {
       if (!config.apiKey || !config.baseUrl) {
         throw new Error(`[claw-router] LLM scoring requires apiKey and baseUrl in llmScoring config. Please configure in plugin settings.`);
       }
-      
-      return { 
-        apiKey: config.apiKey, 
-        baseUrl: config.baseUrl, 
-        apiPath: config.apiPath || '/v1/chat/completions' 
+
+      return {
+        apiKey: config.apiKey,
+        baseUrl: config.baseUrl,
+        apiPath: config.apiPath || '/v1/chat/completions'
       };
     }
 
