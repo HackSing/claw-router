@@ -11,7 +11,7 @@
  *   • Gateway RPC:    route.decide, route.stats
  */
 
-import { route } from './src/router/engine';
+import { route, initLlmScorer } from './src/router/engine';
 import { resolveConfig, type ResolvedConfig } from './src/config';
 import { logDecision } from './src/logger';
 import { Tier, type RouterConfig, type RouterStats, type RouteDecision } from './src/router/types';
@@ -124,6 +124,75 @@ const clawRouterPlugin = {
     const rawConfig = api.pluginConfig as RouterConfig | undefined;
     pluginConfig = resolveConfig(rawConfig);
 
+    // Note: api.config does not contain providers (security limitation)
+    
+    // Initialize LLM scorer if enabled
+    if (pluginConfig.llmScoring?.enabled) {
+      const llmConfig = pluginConfig.llmScoring;
+      
+      // Get model from TRIVIAL tier by default (cheapest model)
+      const model = llmConfig.model || pluginConfig.tiers[Tier.TRIVIAL]?.primary || 'deepseek-ai/DeepSeek-V3-Chat';
+      
+      // Require user to configure apiKey and baseUrl
+      if (!llmConfig.apiKey || !llmConfig.baseUrl) {
+        api.logger.warn('[claw-router] LLM scoring requires apiKey and baseUrl in llmScoring config. LLM scoring disabled.');
+      } else {
+        // Create LLM invocation function
+        const invokeLLM = async (modelName: string, prompt: string): Promise<string> => {
+          const { apiKey, baseUrl, apiPath } = detectProviderFromModel(modelName, llmConfig);
+          
+          // Keep full model path for SiliconFlow (e.g., "deepseek-ai/DeepSeek-V3.2" stays as is)
+          // But remove "siliconflow/" prefix if present
+          let actualModel = modelName;
+          if (modelName.startsWith('siliconflow/')) {
+            actualModel = modelName.substring('siliconflow/'.length);
+          }
+          
+          console.log(`[claw-router] LLM API call: model=${actualModel}, provider=${apiKey.substring(0,10)}...`);
+          
+          const response = await fetch(`${baseUrl}${apiPath}`, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${apiKey}`,
+              'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({
+              model: actualModel,
+              messages: [{ role: 'user', content: prompt }],
+              temperature: 0.3,
+              max_tokens: 1024
+            })
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`LLM API error: ${response.status} - ${errorText}`);
+          }
+
+          const data = await response.json();
+          return data.choices?.[0]?.message?.content || '';
+        };
+        
+        initLlmScorer(llmConfig, invokeLLM);
+        api.logger.info(`LLM scoring enabled: model=${model}, highSpeedMode=${llmConfig.highSpeedMode}`);
+      }
+    }
+
+    // Helper: detect provider config from model name
+    // Require user to configure apiKey and baseUrl in llmScoring config
+    function detectProviderFromModel(modelName: string, config: any): { apiKey: string; baseUrl: string; apiPath: string } {
+      // User MUST configure apiKey and baseUrl
+      if (!config.apiKey || !config.baseUrl) {
+        throw new Error(`[claw-router] LLM scoring requires apiKey and baseUrl in llmScoring config. Please configure in plugin settings.`);
+      }
+      
+      return { 
+        apiKey: config.apiKey, 
+        baseUrl: config.baseUrl, 
+        apiPath: config.apiPath || '/v1/chat/completions' 
+      };
+    }
+
     const log = api.logger;
     log.info(`Claw Router loaded. Tiers configured.`);
 
@@ -142,7 +211,7 @@ const clawRouterPlugin = {
       if (allDefault) return;
 
       // Run the router
-      const decision = route(userMessage, pluginConfig);
+      const decision = await route(userMessage, pluginConfig);
       trackDecision(decision);
       logDecision(decision, pluginConfig.logging, log);
 
@@ -241,7 +310,7 @@ const clawRouterPlugin = {
         required: ['message'],
       },
       async execute(_id: string, params: { message: string }) {
-        const decision = route(params.message, pluginConfig);
+        const decision = await route(params.message, pluginConfig);
         trackDecision(decision);
         logDecision(decision, pluginConfig.logging, log);
         return {
@@ -270,7 +339,7 @@ const clawRouterPlugin = {
       name: 'route',
       description: 'Show claw-router status, tier mapping, and routing stats',
       acceptsArgs: true,
-      handler: (ctx: any) => {
+      handler: async (ctx: any) => {
         const tierLines = Object.entries(pluginConfig.tiers)
           .map(([t, c]: [string, any]) => `  ${t.padEnd(10)} → ${c.primary}`)
           .join('\n');
@@ -286,7 +355,7 @@ const clawRouterPlugin = {
 
         // If args, test-route that message
         if (ctx.args && ctx.args.trim()) {
-          const decision = route(ctx.args.trim(), pluginConfig);
+          const decision = await route(ctx.args.trim(), pluginConfig);
           const dims = decision.score.dimensions
             .filter(d => d.raw > 0)
             .map(d => `  ${d.dimension.padEnd(16)} ${d.raw.toFixed(3)}`)
@@ -336,10 +405,10 @@ const clawRouterPlugin = {
         console.log(`  Overrides:  ${stats.overrideCount}`);
       });
 
-      routeCmd.command('test').description('Test-route a message').argument('<message...>').action((...args: any[]) => {
+      routeCmd.command('test').description('Test-route a message').argument('<message...>').action(async (...args: any[]) => {
         const words = args[0] as string[];
         const msg = words.join(' ');
-        const decision = route(msg, pluginConfig);
+        const decision = await route(msg, pluginConfig);
         console.log(`Message:  "${msg}"`);
         console.log(`Tier:     ${decision.tier}`);
         console.log(`Model:    ${decision.model}`);
@@ -360,13 +429,13 @@ const clawRouterPlugin = {
     // ══════════════════════════════════════════════════════════════════════
     // Gateway RPC
     // ══════════════════════════════════════════════════════════════════════
-    api.registerGatewayMethod('route.decide', ({ params, respond }: any) => {
+    api.registerGatewayMethod('route.decide', async ({ params, respond }: any) => {
       const { message } = params as { message: string };
       if (!message) {
         respond(false, { error: 'message parameter required' });
         return;
       }
-      const decision = route(message, pluginConfig);
+      const decision = await route(message, pluginConfig);
       trackDecision(decision);
       logDecision(decision, pluginConfig.logging, log);
       respond(true, decision);

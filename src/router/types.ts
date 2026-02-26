@@ -91,6 +91,20 @@ export interface RouteDecision {
 
 // ── Configuration ───────────────────────────────────────────────────────────
 
+/** LLM Scoring configuration */
+export interface LlmScoringConfig {
+  enabled: boolean;
+  model?: string;
+  apiKey?: string;
+  baseUrl?: string;
+  fallbackModel?: string;
+  highSpeedMode?: boolean;
+  cache?: {
+    enabled: boolean;
+    maxEntries?: number;
+  };
+}
+
 /** User-supplied plugin configuration (all optional — deep-merged with defaults). */
 export interface RouterConfig {
   tiers?: Partial<Record<Tier, TierModelConfig>>;
@@ -98,6 +112,7 @@ export interface RouterConfig {
   scoring?: {
     weights?: Partial<Record<Dimension, number>>;
   };
+  llmScoring?: LlmScoringConfig;
   logging?: boolean;
 }
 

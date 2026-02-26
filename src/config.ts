@@ -12,6 +12,7 @@ import {
   DEFAULT_THRESHOLDS,
   type RouterConfig,
   type TierModelConfig,
+  type LlmScoringConfig,
 } from './router/types';
 
 // ── Default model mapping ───────────────────────────────────────────────────
@@ -31,6 +32,7 @@ export interface ResolvedConfig {
   thresholds: [number, number, number, number];
   weights: Record<Dimension, number>;
   logging: boolean;
+  llmScoring?: LlmScoringConfig;
 }
 
 /**
@@ -61,5 +63,6 @@ export function resolveConfig(raw?: RouterConfig): ResolvedConfig {
     thresholds,
     weights,
     logging: raw?.logging ?? false,
+    llmScoring: raw?.llmScoring,
   };
 }

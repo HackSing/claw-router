@@ -24,7 +24,7 @@
   },
   "devDependencies": {
     "tsx": "^4.21.0",
-    "typescript": "^5.4.0"
+    "typescript": "^5.9.3"
   },
   "files": [
     "index.ts",
