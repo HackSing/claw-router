@@ -112,57 +112,50 @@ Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
 ## Architecture
 
 ```
-┌─────────────────────────────────────────────────────────┐
-│                    User Message                         │
-└──────────────────────┬──────────────────────────────────┘
+┌──────────────────────────────────────────────────┐
+│                    User Message                        │
+└──────────────────────┬───────────────────────────┘
                        │
                        ▼
               ┌────────────────┐
-              │  Hard Overrides │ ◄── Short msg? 3+ code blocks?
-              │  (< 0.01 ms)   │     "系统设计"?
-              └───────┬────────┘
+              │  Hard Overrides  │ ◄── ≤5 chars? 3+ code blocks?
+              └───────┬────────┘     "system design"?
                       │ no match
                       ▼
      ┌────────────────────────────────────┐
-     │      8-Dimension Scoring Engine     │
-     │                                     │
-     │  ┌─────────────┐ ┌──────────────┐  │
-     │  │  Reasoning   │ │  Code/Tech   │  │
-     │  │  (w: 0.20)   │ │  (w: 0.18)   │  │
-     │  └─────────────┘ └──────────────┘  │
-     │  ┌─────────────┐ ┌──────────────┐  │
-     │  │  Task Steps  │ │  Domain      │  │
-     │  │  (w: 0.15)   │ │  (w: 0.12)   │  │
-     │  └─────────────┘ └──────────────┘  │
-     │  ┌─────────────┐ ┌──────────────┐  │
-     │  │  Output      │ │  Creativity  │  │
-     │  │  (w: 0.10)   │ │  (w: 0.10)   │  │
-     │  └─────────────┘ └──────────────┘  │
-     │  ┌─────────────┐ ┌──────────────┐  │
-     │  │  Context     │ │  Length      │  │
-     │  │  (w: 0.08)   │ │  (w: 0.07)   │  │
-     │  └─────────────┘ └──────────────┘  │
+     │  8-Dimension Rule Scorer (< 1ms)    │
+     │                                    │
+     │  Reasoning(0.20) Code(0.18)        │
+     │  TaskSteps(0.15) Domain(0.12)      │
+     │  Output(0.10)    Creativity(0.10)  │
+     │  Context(0.08)   Length(0.07)      │
      └───────────────────┬────────────────┘
-                         │
+                         │ calibrated score
                          ▼
               ┌──────────────────┐
-              │ Sigmoid Calibrate │
-              │   Σ(wᵢ·sᵢ) → σ   │
+              │ Boundary Check    │
+              │ (±0.08 of tier)   │
               └────────┬─────────┘
-                       │
-                       ▼
-     ┌─────────────────────────────────────┐
-     │           Tier Mapping               │
-     │  [0.00,0.15) → TRIVIAL              │
-     │  [0.15,0.35) → SIMPLE               │
-     │  [0.35,0.55) → MODERATE              │
-     │  [0.55,0.75) → COMPLEX              │
-     │  [0.75,1.00] → EXPERT               │
-     └─────────────────┬───────────────────┘
-                       │
+                ┌──────┴──────┐
+          Not near       Near boundary
+          boundary       + LLM enabled
+                │              │
+                │              ▼
+                │    ┌──────────────────┐
+                │    │ LLM Classifier    │
+                │    │ (tier+confidence) │
+                │    └────────┬─────────┘
+                │             │
+                │             ▼
+                │    ┌──────────────────┐
+                │    │ Weighted Merge    │
+                │    │ rule×(1-w)+llm×w │
+                │    └────────┬─────────┘
+                │             │
+                └──────┬──────┘
                        ▼
               ┌────────────────┐
-              │  Model Selection│ → primary / fallback
+              │ Tier → Model    │
               └────────────────┘
 ```
 
@@ -176,7 +169,7 @@ The agent can call this tool to get routing recommendations:
 
 ```
 Tool: smart_route
-Input: { "message": "帮我设计一个分布式缓存系统" }
+Input: { "message": "Design a distributed caching system with sharding" }
 Output: {
   "tier": "EXPERT",
   "model": "api-proxy-claude/claude-opus-4-6",
@@ -201,7 +194,7 @@ Type `/route` in chat to see current router status and statistics.
 openclaw route status
 
 # Test a message
-openclaw route test "请帮我写一个排序算法"
+openclaw route test "Help me write a sorting algorithm"
 ```
 
 ### 🔌 Gateway RPC
@@ -264,7 +257,7 @@ These take priority over scoring:
 |-----------|--------|
 | Message ≤ 5 chars, no tech words | → TRIVIAL |
 | 3+ code fences (```) | → COMPLEX |
-| Contains "系统设计", "架构设计", "从零搭建" | → EXPERT |
+| Contains "system design", "from scratch", etc. | → EXPERT |
 
 ---
 
@@ -299,17 +292,18 @@ claw-router/
 ├── openclaw.plugin.json      # Plugin manifest
 ├── src/
 │   ├── router/
-│   │   ├── engine.ts         # Routing engine (orchestrator)
+│   │   ├── engine.ts         # Routing engine (rules → boundary → LLM → merge)
 │   │   ├── scorer.ts         # 8-dimension scorer
+│   │   ├── llm-scorer.ts     # LLM classifier (conditional trigger)
 │   │   ├── keywords.ts       # Bilingual keyword library
 │   │   ├── overrides.ts      # Hard-rule overrides
 │   │   └── types.ts          # TypeScript types
 │   ├── config.ts             # Configuration resolver
 │   └── logger.ts             # Decision logger
 ├── test/
-│   ├── engine.test.ts        # Integration tests
+│   ├── engine.test.ts        # Integration tests (75 cases)
 │   ├── scorer.test.ts        # Unit tests
-│   └── fixtures.ts           # 35+ test cases
+│   └── fixtures.ts           # 35+ test fixtures
 └── skills/
     └── smart-router/
         └── SKILL.md
@@ -323,18 +317,17 @@ See [ROADMAP.md](./ROADMAP.md) for detailed development plans.
 
 ### Recent Updates ✅
 
-**v1.1.0 (In Progress)**
+**v1.1.0 (Released)**
+- ✅ LLM-assisted scoring with conditional boundary triggering (±0.08)
+- ✅ Sigmoid calibration (k=8, mid=0.18), grid-search optimized (52% → 71% exact match)
+- ✅ 75 test cases (up from 57), including LLM scorer unit tests
 - ✅ Improved code context detection with regex patterns
-- ✅ Enhanced complexity signal matching
-- 📝 Adding more test cases
-- 📝 Expanding keyword library
 
 ### Coming Soon 🚀
 
+- **Fallback Auto-Switch** — Automatic failover to fallback model on primary failure
 - **Learning & Feedback** — Record routing decisions and adapt based on user corrections
 - **Context-Aware Routing** — Consider conversation history for better decisions
-- **Visual Dashboard** — Web UI for routing analytics and 8-dimension radar charts
-- **More Model Providers** — Hugging Face, Together, Groq, local models (Ollama)
 
 ---
 
