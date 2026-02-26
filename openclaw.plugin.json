@@ -38,6 +38,34 @@
         "type": "boolean",
         "description": "Enable verbose routing logs",
         "default": false
+      },
+      "llmScoring": {
+        "type": "object",
+        "description": "LLM-based scoring configuration",
+        "properties": {
+          "enabled": {
+            "type": "boolean",
+            "description": "Enable LLM-enhanced scoring",
+            "default": false
+          },
+          "model": {
+            "type": "string",
+            "description": "LLM model for scoring (e.g., siliconflow/deepseek-ai/DeepSeek-V3-Chat)"
+          },
+          "apiKey": {
+            "type": "string",
+            "description": "API key for LLM provider"
+          },
+          "baseUrl": {
+            "type": "string",
+            "description": "Base URL for LLM API"
+          },
+          "highSpeedMode": {
+            "type": "boolean",
+            "description": "Enable async mode (faster but may miss first-time accuracy)",
+            "default": false
+          }
+        }
       }
     }
   }
