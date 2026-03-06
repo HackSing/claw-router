@@ -27,7 +27,9 @@ export function logDecision(decision: RouteDecision, logging: boolean, logger?: 
   const message =
     `[claw-router] ─── Route Decision ───\n` +
     `  Tier:       ${tier}\n` +
+    `  TaskType:   ${decision.taskType}\n` +
     `  Model:      ${model}\n` +
+    `  Match:      ${decision.matchSource}\n` +
     `  Score:      ${score.calibrated.toFixed(4)} (raw sum: ${score.rawSum.toFixed(4)})\n` +
     override +
     (dims ? `  Dimensions:\n${dims}\n` : '') +

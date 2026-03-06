@@ -2,6 +2,55 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2026-03-07
+
+### ⚠️ Breaking Changes
+- **Configuration format changed**: `tiers` and `taskRouting` replaced by `models` array
+- **RouteDecision type changed**: `fallback` removed, `matchSource` and `candidates` added
+- **TaskType enum**: `GENERAL` renamed to `OTHER`
+
+### Added
+- **Trait-based model routing**: Declare model capabilities via traits, router matches automatically
+- **Model Matcher** (`model-matcher.ts`): Trait extraction → model scoring → model selection
+- **LLM Arbitration**: When multiple models tie on trait match, LLM picks the best one
+- **New TaskTypes**: `math` (mathematics, formulas) and `research` (papers, literature)
+- **New types**: `ModelProfile`, `TraitMatchResult`, `MatchSource`
+- 127 test cases across 14 suites (up from 75)
+
+### Changed
+- `config.ts`: `tiers`/`taskRouting` → `models` array with default fallback model
+- `engine.ts`: `finalize()` now async, uses model-matcher + LLM arbitration
+- `llm-scorer.ts`: Added `arbitrate()` method with dedicated prompt
+- `index.ts`: Logging includes `matchSource` and `candidates`
+- `logger.ts`: Output includes TaskType and Match source
+- `openclaw.plugin.json`: Schema updated, version 2.0.0
+
+### Removed
+- `TierModelConfig`, `TaskTypeModelConfig`, `TaskRoutingConfig` types
+- `tiers` and `taskRouting` configuration fields
+
+### Configuration Migration
+
+**Old format (v1.x):**
+```json
+{
+  "tiers": {
+    "TRIVIAL": { "primary": "fast-model" },
+    "EXPERT": { "primary": "best-model" }
+  }
+}
+```
+
+**New format (v2.0):**
+```json
+{
+  "models": [
+    { "id": "fast-model", "traits": ["chat", "TRIVIAL", "SIMPLE"] },
+    { "id": "best-model", "traits": ["coding", "COMPLEX", "EXPERT"] }
+  ]
+}
+```
+
 ## [1.0.4] - 2026-02-14
 
 ### Added

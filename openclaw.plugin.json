@@ -1,8 +1,8 @@
 {
   "id": "claw-router",
   "name": "Claw Router — Smart Model Routing",
-  "version": "1.1.0",
-  "description": "Intelligent model routing plugin for OpenClaw — routes messages to optimal AI models based on 8-dimension complexity scoring",
+  "version": "2.0.0",
+  "description": "Intelligent model routing plugin for OpenClaw — routes messages to optimal AI models based on trait-based capability matching",
   "author": "aiwaretop",
   "license": "MIT",
   "repository": {
@@ -14,13 +14,33 @@
     "type": "object",
     "additionalProperties": false,
     "properties": {
-      "tiers": {
-        "type": "object",
-        "description": "Per-tier model mapping. Keys: TRIVIAL, SIMPLE, MODERATE, COMPLEX, EXPERT"
+      "models": {
+        "type": "array",
+        "description": "模型能力声明列表。每个模型通过 traits 描述擅长的领域和复杂度等级。",
+        "items": {
+          "type": "object",
+          "properties": {
+            "id": {
+              "type": "string",
+              "description": "模型标识，如 anthropic/claude-sonnet"
+            },
+            "traits": {
+              "type": "array",
+              "description": "能力特征列表。Tier: TRIVIAL/SIMPLE/MODERATE/COMPLEX/EXPERT; TaskType: coding/writing/chat/analysis/translation/math/research/other",
+              "items": {
+                "type": "string"
+              }
+            }
+          },
+          "required": [
+            "id",
+            "traits"
+          ]
+        }
       },
       "thresholds": {
         "type": "array",
-        "description": "Four score boundaries [trivial→simple, simple→moderate, moderate→complex, complex→expert]",
+        "description": "四个评分分界点 [trivial→simple, simple→moderate, moderate→complex, complex→expert]",
         "items": {
           "type": "number"
         },
@@ -32,39 +52,39 @@
         "properties": {
           "weights": {
             "type": "object",
-            "description": "Override dimension weights"
+            "description": "覆盖维度权重"
           }
         }
       },
       "logging": {
         "type": "boolean",
-        "description": "Enable verbose routing logs",
+        "description": "启用详细路由日志",
         "default": false
       },
       "llmScoring": {
         "type": "object",
-        "description": "LLM-based scoring configuration. Only triggers when rule-based score is near tier boundaries (±0.08).",
+        "description": "LLM 辅助评分配置。规则评分处于 tier 边界时触发，同时用于多模型冲突仲裁。",
         "properties": {
           "enabled": {
             "type": "boolean",
-            "description": "Enable LLM-enhanced scoring",
+            "description": "启用 LLM 辅助",
             "default": false
           },
           "model": {
             "type": "string",
-            "description": "LLM model for scoring (e.g., deepseek-ai/DeepSeek-V3-Chat)"
+            "description": "LLM 模型（如 deepseek-ai/DeepSeek-V3-Chat）"
           },
           "apiKey": {
             "type": "string",
-            "description": "API key for LLM provider"
+            "description": "LLM 提供商 API Key"
           },
           "baseUrl": {
             "type": "string",
-            "description": "Base URL for LLM API"
+            "description": "LLM API 基础 URL"
           },
           "apiPath": {
             "type": "string",
-            "description": "API endpoint path (default: /v1/chat/completions)"
+            "description": "API 端点路径（默认 /v1/chat/completions）"
           }
         }
       }

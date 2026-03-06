@@ -1,7 +1,7 @@
 /**
  * @aiwaretop/claw-router — Engine Tests
  *
- * 端到端测试：message → route() → 正确的 tier。
+ * 端到端测试：message → route() → 正确的 tier + 模型匹配。
  * 使用 Node.js 内置 test runner (node:test)。
  */
 
@@ -76,13 +76,27 @@ describe('Routing Engine — core properties', () => {
     assert.ok(decision.tier, 'Should still produce a tier');
   });
 
-  it('custom config overrides defaults', async () => {
+  it('custom config with models overrides defaults', async () => {
     const custom = resolveConfig({
-      tiers: { TRIVIAL: { primary: 'my-fast-model' } },
+      models: [
+        { id: 'my-fast-model', traits: ['TRIVIAL', 'SIMPLE', 'chat'] },
+      ],
       thresholds: [0.10, 0.30, 0.50, 0.70],
     });
     const decision = await route('hi', custom);
+    // TRIVIAL tier + chat taskType → my-fast-model 应匹配
     assert.equal(decision.model, 'my-fast-model');
+  });
+
+  it('route decision includes matchSource', async () => {
+    const decision = await route('写个函数', config);
+    assert.ok(decision.matchSource, 'Should have matchSource');
+    assert.ok(['trait', 'llm_arbitration', 'default'].includes(decision.matchSource));
+  });
+
+  it('route decision includes candidates array', async () => {
+    const decision = await route('写个函数', config);
+    assert.ok(Array.isArray(decision.candidates), 'Should have candidates array');
   });
 });
 
@@ -121,12 +135,11 @@ describe('isNearBoundary — 边界检测', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// mergeScores — 加权融合测试
+// scoreOnly — 校准与评分
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('scoreOnly — 校准与评分', () => {
   it('短消息评分低（但 sigmoid > 0）', () => {
-    // 用 >5 字符且不触发 override 的消息
     const score = scoreOnly('今天天气怎么样', config);
     assert.ok(score.calibrated > 0 && score.calibrated < 0.5,
       `Short message calibrated=${score.calibrated}, expected 0 < x < 0.5`);
@@ -160,7 +173,6 @@ describe('scoreOnly — 校准与评分', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('LlmScorer — parseResponse & convertToScoreResult', () => {
-  // 构造一个不会真正调 API 的 LlmScorer
   const mockInvoke = async (_model: string, _prompt: string) => '';
   const scorer = new LlmScorer({ enabled: true, model: 'test' }, mockInvoke);
 
@@ -233,13 +245,45 @@ describe('LlmScorer — parseResponse & convertToScoreResult', () => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
+// LLM Scorer — 仲裁测试
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('LlmScorer — arbitrate', () => {
+  it('仲裁返回合法 JSON 时正确解析', async () => {
+    const mockInvoke = async () => '{"model":"anthropic/claude-sonnet","reasoning":"代码任务更适合 Claude"}';
+    const scorer = new LlmScorer({ enabled: true, model: 'test' }, mockInvoke);
+    const candidates = [
+      { model: { id: 'anthropic/claude-sonnet', traits: ['coding', 'COMPLEX'] }, score: 1, matchedTraits: ['coding', 'COMPLEX'] },
+      { model: { id: 'openai/gpt-4o', traits: ['coding', 'COMPLEX'] }, score: 1, matchedTraits: ['coding', 'COMPLEX'] },
+    ];
+    const result = await scorer.arbitrate('写代码', candidates);
+    assert.ok(result);
+    assert.equal(result!.model, 'anthropic/claude-sonnet');
+  });
+
+  it('仲裁返回不在候选列表中的 model 时返回 null', async () => {
+    const mockInvoke = async () => '{"model":"unknown-model","reasoning":"test"}';
+    const scorer = new LlmScorer({ enabled: true, model: 'test' }, mockInvoke);
+    const candidates = [
+      { model: { id: 'model-a', traits: ['coding'] }, score: 1, matchedTraits: ['coding'] },
+    ];
+    const result = await scorer.arbitrate('test', candidates);
+    assert.equal(result, null);
+  });
+
+  it('仲裁 enabled=false 时返回 null', async () => {
+    const scorer = new LlmScorer({ enabled: false, model: 'test' }, async () => '');
+    const result = await scorer.arbitrate('test', []);
+    assert.equal(result, null);
+  });
+});
+
+// ═══════════════════════════════════════════════════════════════════════════
 // 真实边界消息端到端测试
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('Routing — 边界消息行为', () => {
   it('技术词免于 short override 规则但仍可能评分低', async () => {
-    // 'git' 3字符，hasTechToken 返回 true 所以不会被 override
-    // 但评分本身很低，所以仍可能是 TRIVIAL——这是正确的行为
     const decision = await route('git', config);
     assert.ok(decision.score.overrideApplied === undefined || !decision.score.overrideApplied.includes('short_nontechnical'),
       'Should not be overridden by short_nontechnical rule');
@@ -257,10 +301,11 @@ describe('Routing — 边界消息行为', () => {
     assert.ok(decision.score.dimensions.length === 8);
     assert.ok(decision.latencyMs >= 0);
     assert.ok(decision.model);
+    assert.ok(decision.taskType);
+    assert.ok(decision.matchSource);
   });
 
-  it('所有 tier 的模型映射正确 (default config)', async () => {
-    // default config 所有 tiers 都指向 'default'
+  it('default config 路由到 default 模型', async () => {
     const decisions = await Promise.all([
       route('你好', config),
       route('写个函数', config),
@@ -268,5 +313,22 @@ describe('Routing — 边界消息行为', () => {
     for (const d of decisions) {
       assert.equal(d.model, 'default');
     }
+  });
+
+  it('trait 匹配正确路由到配置的模型', async () => {
+    const custom = resolveConfig({
+      models: [
+        // 覆盖所有可能的编程 tier（SIMPLE 到 EXPERT）
+        { id: 'code-model', traits: ['coding', 'SIMPLE', 'MODERATE', 'COMPLEX', 'EXPERT'] },
+        { id: 'chat-model', traits: ['chat', 'TRIVIAL', 'SIMPLE'] },
+      ],
+    });
+    const codingDecision = await route('用 Python 实现一个排序算法', custom);
+    const chatDecision = await route('你好', custom);
+
+    // 编程任务应路由到 code-model
+    assert.equal(codingDecision.model, 'code-model');
+    // 闲聊应路由到 chat-model
+    assert.equal(chatDecision.model, 'chat-model');
   });
 });

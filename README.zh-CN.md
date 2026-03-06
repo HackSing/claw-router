@@ -1,6 +1,6 @@
 # 🔀 @aiwaretop/claw-router
 
-> **[OpenClaw](https://openclaw.app) 智能模型路由插件** — 根据消息复杂度自动选择最佳模型。支持纯规则评分（< 1ms）和 LLM 辅助评分（边界区间条件触发）。
+> **[OpenClaw](https://openclaw.app) 智能模型路由插件** — 声明模型能力特征，插件自动匹配最优模型。
 
 [![AIWare Community License](https://img.shields.io/badge/license-AIWare%20Community%20License-blue.svg)](LICENSE)
 [![OpenClaw Plugin](https://img.shields.io/badge/OpenClaw-plugin-purple.svg)](https://openclaw.app)
@@ -13,8 +13,9 @@
 
 不是每条消息都需要最强的模型。"你好" 用快速便宜的模型就够了，而"设计一个分布式系统" 则需要顶级模型来处理。**Claw Router** 自动帮你做这个决策：
 
+- **Trait 匹配路由**：声明每个模型擅长什么，路由器自动匹配
 - **纯规则模式**：本地计算，< 1ms，零 API 调用
-- **LLM 辅助模式**：仅在规则评分处于 tier 边界区间（±0.08）时触发 LLM，~70% 消息可跳过 LLM 调用
+- **LLM 辅助模式**：Tier 边界精化 + 多模型冲突仲裁
 
 ```
 用户: "你好"           → TRIVIAL  → doubao-seed-code    （快速、便宜）
@@ -38,37 +39,34 @@
                       │ 无匹配
                       ▼
      ┌────────────────────────────────────┐
-     │      8 维规则评分引擎 (< 1ms)       │
-     │                                    │
-     │  推理(0.20)   代码(0.18)            │
-     │  步骤(0.15)   领域(0.12)            │
-     │  输出(0.10)   创意(0.10)            │
-     │  上下文(0.08) 长度(0.07)            │
+     │  8 维规则评分引擎 (< 1ms)          │ → Tier
      └───────────────────┬────────────────┘
-                         │ calibrated 分数
+                         │
                          ▼
-              ┌──────────────────┐
-              │ 边界检测 (±0.08)  │
-              └────────┬─────────┘
-                ┌──────┴──────┐
-          不在边界         在边界且 LLM 已启用
-                │              │
-                │              ▼
-                │    ┌──────────────────┐
-                │    │  LLM 分类器       │
-                │    │ (tier+confidence) │
-                │    └────────┬─────────┘
-                │             │
-                │             ▼
-                │    ┌──────────────────┐
-                │    │  加权融合          │
-                │    │ rule×(1-w)+llm×w │
-                │    └────────┬─────────┘
-                │             │
-                └──────┬──────┘
-                       ▼
+     ┌────────────────────────────────────┐
+     │  任务分类器（关键词匹配）            │ → TaskType
+     └───────────────────┬────────────────┘
+                         │
+                         ▼
+     ┌────────────────────────────────────┐
+     │  Trait 匹配引擎                    │
+     │  traits = [Tier, TaskType]         │
+     │  对每个模型的 traits 评分           │
+     │  选择最高分模型                     │
+     └───────────────────┬────────────────┘
+                  ┌──────┴──────┐
+            唯一最高分    多个并列
+                  │              │
+                  │              ▼
+                  │    ┌──────────────────┐
+                  │    │ LLM 仲裁         │
+                  │    │（选择最优模型）    │
+                  │    └────────┬─────────┘
+                  │             │
+                  └──────┬──────┘
+                         ▼
               ┌────────────────┐
-              │   Tier → 模型   │
+              │   最终模型      │
               └────────────────┘
 ```
 
@@ -132,9 +130,9 @@ cp -r . ~/.openclaw/extensions/claw-router
 }
 ```
 
-### 3. 配置（可选）
+### 2. 配置模型
 
-**重要：** 插件配置必须放在 `config` 字段下：
+**重要：** 插件配置必须放在 `config` 字段下。声明每个模型的 traits（能力特征）：
 
 ```json
 {
@@ -143,14 +141,20 @@ cp -r . ~/.openclaw/extensions/claw-router
       "claw-router": {
         "enabled": true,
         "config": {
-          "thresholds": [0.20, 0.42, 0.58, 0.78],
-          "tiers": {
-            "TRIVIAL":  { "primary": "volcengine/doubao-seed-code" },
-            "SIMPLE":   { "primary": "volcengine/doubao-seed-code" },
-            "MODERATE": { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
-            "COMPLEX":  { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
-            "EXPERT":   { "primary": "api-proxy-claude/claude-opus-4-6" }
-          },
+          "models": [
+            {
+              "id": "anthropic/claude-sonnet",
+              "traits": ["coding", "analysis", "COMPLEX", "EXPERT"]
+            },
+            {
+              "id": "openai/gpt-4o-mini",
+              "traits": ["chat", "translation", "TRIVIAL", "SIMPLE"]
+            },
+            {
+              "id": "google/gemini-pro",
+              "traits": ["writing", "research", "MODERATE", "COMPLEX"]
+            }
+          ],
           "logging": true
         }
       }
@@ -158,6 +162,10 @@ cp -r . ~/.openclaw/extensions/claw-router
   }
 }
 ```
+
+Trait 词表（固定）：
+- **Tier**: `TRIVIAL`, `SIMPLE`, `MODERATE`, `COMPLEX`, `EXPERT`
+- **TaskType**: `coding`, `writing`, `chat`, `analysis`, `translation`, `math`, `research`, `other`
 
 ---
 
@@ -172,9 +180,11 @@ Agent 可以调用此工具获取路由建议：
 输入: { "message": "帮我设计一个分布式缓存系统" }
 输出: {
   "tier": "EXPERT",
-  "model": "api-proxy-claude/claude-opus-4-6",
+  "taskType": "coding",
+  "model": "anthropic/claude-sonnet",
+  "matchSource": "trait",
   "score": 0.8234,
-  "dimensions": { "reasoning": 0.5, "codeTech": 0.65, ... }
+  "candidates": [...]
 }
 ```
 
@@ -205,17 +215,17 @@ await rpc('route.stats');
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `tiers` | `Record<Tier, { primary, fallback? }>` | 全部 `"default"` | 每个 Tier 对应的模型 |
+| `models` | `ModelProfile[]` | `[{id:'default', traits:[...all]}]` | 模型能力声明 |
 | `thresholds` | `[n, n, n, n]` | `[0.20, 0.42, 0.58, 0.78]` | Tier 分界阈值 |
 | `scoring.weights` | `Record<Dimension, number>` | 见下表 | 覆盖维度权重 |
 | `logging` | `boolean` | `false` | 启用详细路由日志 |
-| `llmScoring.enabled` | `boolean` | `false` | 启用 LLM 辅助评分 |
-| `llmScoring.model` | `string` | — | LLM 评分模型 |
+| `llmScoring.enabled` | `boolean` | `false` | 启用 LLM 辅助评分与仲裁 |
+| `llmScoring.model` | `string` | — | LLM 评分/仲裁模型 |
 | `llmScoring.apiKey` | `string` | — | LLM API Key |
 | `llmScoring.baseUrl` | `string` | — | LLM API 地址 |
 | `llmScoring.apiPath` | `string` | `/v1/chat/completions` | API 端点路径 |
 
-### LLM 辅助评分配置示例
+### LLM 辅助（可选）
 
 ```json
 {
@@ -228,7 +238,11 @@ await rpc('route.stats');
 }
 ```
 
-LLM 评分**仅在规则评分处于 tier 阈值边界区间（±0.08）时触发**，约 70% 的消息会跳过 LLM 调用。LLM 调用自带 3 秒超时保护，超时则回退到规则结果。
+LLM 在两个场景触发：
+1. **Tier 边界**：规则评分处于阈值边界区间（±0.08）— LLM 精化复杂度判断（~70% 消息跳过）
+2. **模型仲裁**：多个模型 trait 匹配并列 — LLM 选择最优
+
+包含 3 秒超时保护，超时自动回退到规则结果。
 
 ### 默认权重
 

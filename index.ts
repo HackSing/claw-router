@@ -1,7 +1,7 @@
 /**
  * @aiwaretop/claw-router — OpenClaw Plugin Entry Point
  *
- * Automatic model routing based on message complexity.
+ * Automatic model routing based on trait-based capability matching.
  *
  * Registers:
  *   • Hook:           before_agent_start — auto-switch model per message
@@ -124,14 +124,11 @@ const clawRouterPlugin = {
     const rawConfig = api.pluginConfig as RouterConfig | undefined;
     pluginConfig = resolveConfig(rawConfig);
 
-    // Note: api.config does not contain providers (security limitation)
-
     // Initialize LLM scorer if enabled
     if (pluginConfig.llmScoring?.enabled) {
       const llmConfig = pluginConfig.llmScoring;
 
-      // Get model from TRIVIAL tier by default (cheapest model)
-      const model = llmConfig.model || pluginConfig.tiers[Tier.TRIVIAL]?.primary || 'deepseek-ai/DeepSeek-V3-Chat';
+      const model = llmConfig.model || 'deepseek-ai/DeepSeek-V3-Chat';
 
       // Require user to configure apiKey and baseUrl
       if (!llmConfig.apiKey || !llmConfig.baseUrl) {
@@ -141,8 +138,7 @@ const clawRouterPlugin = {
         const invokeLLM = async (modelName: string, prompt: string): Promise<string> => {
           const { apiKey, baseUrl, apiPath } = detectProviderFromModel(modelName, llmConfig);
 
-          // 保留完整模型路径（如 SiliconFlow 的 "deepseek-ai/DeepSeek-V3.2"）
-          // 但去掉 "siliconflow/" 前缀
+          // 保留完整模型路径，但去掉 "siliconflow/" 前缀
           let actualModel = modelName;
           if (modelName.startsWith('siliconflow/')) {
             actualModel = modelName.substring('siliconflow/'.length);
@@ -188,11 +184,9 @@ const clawRouterPlugin = {
     }
 
     // Helper: detect provider config from model name
-    // Require user to configure apiKey and baseUrl in llmScoring config
     function detectProviderFromModel(modelName: string, config: any): { apiKey: string; baseUrl: string; apiPath: string } {
-      // User MUST configure apiKey and baseUrl
       if (!config.apiKey || !config.baseUrl) {
-        throw new Error(`[claw-router] LLM scoring requires apiKey and baseUrl in llmScoring config. Please configure in plugin settings.`);
+        throw new Error(`[claw-router] LLM scoring requires apiKey and baseUrl in llmScoring config.`);
       }
 
       return {
@@ -203,7 +197,10 @@ const clawRouterPlugin = {
     }
 
     const log = api.logger;
-    log.info(`Claw Router loaded. Tiers configured.`);
+
+    // 日志：显示已注册的模型数量
+    const userModels = pluginConfig.models.filter(m => m.id !== 'default');
+    log.info(`Claw Router loaded. ${userModels.length} model(s) configured.`);
 
     // ══════════════════════════════════════════════════════════════════════
     // CORE: before_agent_start hook — automatic model switching
@@ -215,9 +212,9 @@ const clawRouterPlugin = {
       const userMessage = event.prompt ?? '';
       if (!userMessage.trim()) return;
 
-      // Skip if all tiers point to 'default' (not configured)
-      const allDefault = Object.values(pluginConfig.tiers).every((t: any) => t.primary === 'default');
-      if (allDefault) return;
+      // 如果只有 default 模型（用户没配 models），跳过路由
+      const hasUserModels = pluginConfig.models.some(m => m.id !== 'default');
+      if (!hasUserModels) return;
 
       // Run the router
       const decision = await route(userMessage, pluginConfig);
@@ -232,8 +229,8 @@ const clawRouterPlugin = {
         const updated = applyModelToSession(ctx.sessionKey, targetModel, log);
         if (updated) {
           log.info(
-            `[claw-router] ${decision.tier} → ${targetModel} ` +
-            `(score: ${decision.score.calibrated.toFixed(3)}, ` +
+            `[claw-router] ${decision.tier}/${decision.taskType} → ${targetModel} ` +
+            `(match: ${decision.matchSource}, score: ${decision.score.calibrated.toFixed(3)}, ` +
             `latency: ${decision.latencyMs}ms)`
           );
         }
@@ -242,7 +239,7 @@ const clawRouterPlugin = {
       // Prepend routing context if logging enabled
       if (pluginConfig.logging) {
         return {
-          prependContext: `[claw-router: tier=${decision.tier}, model=${targetModel}, score=${decision.score.calibrated.toFixed(3)}]`,
+          prependContext: `[claw-router: tier=${decision.tier}, taskType=${decision.taskType}, model=${targetModel}, match=${decision.matchSource}, score=${decision.score.calibrated.toFixed(3)}]`,
         };
       }
     });
@@ -306,8 +303,8 @@ const clawRouterPlugin = {
     api.registerTool({
       name: 'smart_route',
       description:
-        'Analyze a user message and recommend the optimal model tier. ' +
-        'Returns tier, model, confidence score, and dimension breakdown.',
+        'Analyze a user message and recommend the optimal model based on trait matching. ' +
+        'Returns tier, taskType, model, match source, and dimension breakdown.',
       parameters: {
         type: 'object' as const,
         properties: {
@@ -327,11 +324,17 @@ const clawRouterPlugin = {
             type: 'text' as const,
             text: JSON.stringify({
               tier: decision.tier,
+              taskType: decision.taskType,
               model: decision.model,
-              fallback: decision.fallback,
+              matchSource: decision.matchSource,
               score: decision.score.calibrated,
               override: decision.score.overrideApplied ?? null,
               latencyMs: decision.latencyMs,
+              candidates: decision.candidates.map(c => ({
+                model: c.model.id,
+                score: c.score,
+                matchedTraits: c.matchedTraits,
+              })),
               dimensions: Object.fromEntries(
                 decision.score.dimensions.map(d => [d.dimension, parseFloat(d.raw.toFixed(4))]),
               ),
@@ -346,11 +349,11 @@ const clawRouterPlugin = {
     // ══════════════════════════════════════════════════════════════════════
     api.registerCommand({
       name: 'route',
-      description: 'Show claw-router status, tier mapping, and routing stats',
+      description: 'Show claw-router status, model profiles, and routing stats',
       acceptsArgs: true,
       handler: async (ctx: any) => {
-        const tierLines = Object.entries(pluginConfig.tiers)
-          .map(([t, c]: [string, any]) => `  ${t.padEnd(10)} → ${c.primary}`)
+        const modelLines = pluginConfig.models
+          .map(m => `  ${m.id.padEnd(30)} [${m.traits.join(', ')}]`)
           .join('\n');
 
         const statsText =
@@ -370,14 +373,21 @@ const clawRouterPlugin = {
             .map(d => `  ${d.dimension.padEnd(16)} ${d.raw.toFixed(3)}`)
             .join('\n');
 
+          const candidateText = decision.candidates
+            .map(c => `  ${c.model.id}: ${(c.score * 100).toFixed(0)}% [${c.matchedTraits.join(', ')}]`)
+            .join('\n');
+
           return {
             text:
               `🔀 **Route Test**\n\n` +
               `Message: "${ctx.args.trim()}"\n` +
               `Tier: **${decision.tier}**\n` +
+              `TaskType: **${decision.taskType}**\n` +
               `Model: ${decision.model}\n` +
+              `Match: ${decision.matchSource}\n` +
               `Score: ${decision.score.calibrated.toFixed(4)}\n` +
               (decision.score.overrideApplied ? `Override: ${decision.score.overrideApplied}\n` : '') +
+              (candidateText ? `\nCandidates:\n${candidateText}` : '') +
               (dims ? `\nDimensions:\n${dims}` : ''),
           };
         }
@@ -385,7 +395,7 @@ const clawRouterPlugin = {
         return {
           text:
             `🔀 **Claw Router Status**\n\n` +
-            `**Tier → Model Mapping:**\n${tierLines}\n\n` +
+            `**Model Profiles:**\n${modelLines}\n\n` +
             `**Stats:**\n${statsText}\n\n` +
             `**Tier Distribution:**\n${distText}\n\n` +
             `_Tip: /route <message> to test routing_`,
@@ -404,9 +414,9 @@ const clawRouterPlugin = {
         console.log('─'.repeat(40));
         console.log('Thresholds:', pluginConfig.thresholds.join(', '));
         console.log('Logging:', pluginConfig.logging);
-        console.log('\nTier Mapping:');
-        for (const [t, c] of Object.entries(pluginConfig.tiers)) {
-          console.log(`  ${t.padEnd(10)} → ${c.primary}`);
+        console.log('\nModel Profiles:');
+        for (const m of pluginConfig.models) {
+          console.log(`  ${m.id.padEnd(30)} [${m.traits.join(', ')}]`);
         }
         console.log('\nStats:');
         console.log(`  Total:      ${stats.totalRouted}`);
@@ -418,14 +428,24 @@ const clawRouterPlugin = {
         const words = args[0] as string[];
         const msg = words.join(' ');
         const decision = await route(msg, pluginConfig);
-        console.log(`Message:  "${msg}"`);
-        console.log(`Tier:     ${decision.tier}`);
-        console.log(`Model:    ${decision.model}`);
-        console.log(`Score:    ${decision.score.calibrated.toFixed(4)}`);
+        console.log(`Message:     "${msg}"`);
+        console.log(`Tier:        ${decision.tier}`);
+        console.log(`TaskType:    ${decision.taskType}`);
+        console.log(`Model:       ${decision.model}`);
+        console.log(`Match:       ${decision.matchSource}`);
+        console.log(`Score:       ${decision.score.calibrated.toFixed(4)}`);
         if (decision.score.overrideApplied) {
-          console.log(`Override: ${decision.score.overrideApplied}`);
+          console.log(`Override:    ${decision.score.overrideApplied}`);
         }
-        console.log(`Latency:  ${decision.latencyMs} ms`);
+        console.log(`Latency:     ${decision.latencyMs} ms`);
+
+        if (decision.candidates.length > 0) {
+          console.log('\nCandidates:');
+          for (const c of decision.candidates) {
+            console.log(`  ${c.model.id}: ${(c.score * 100).toFixed(0)}% match [${c.matchedTraits.join(', ')}]`);
+          }
+        }
+
         console.log('\nDimensions:');
         for (const d of decision.score.dimensions) {
           if (d.raw > 0) {

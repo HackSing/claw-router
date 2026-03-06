@@ -1,6 +1,6 @@
 # 🔀 @aiwaretop/claw-router
 
-> **Intelligent model routing for [OpenClaw](https://openclaw.app)** — route every message to the right model, automatically.
+> **Intelligent model routing for [OpenClaw](https://openclaw.app)** — declare model traits, let the router match automatically.
 
 [![AIWare Community License](https://img.shields.io/badge/license-AIWare%20Community%20License-blue.svg)](LICENSE)
 [![OpenClaw Plugin](https://img.shields.io/badge/OpenClaw-plugin-purple.svg)](https://openclaw.app)
@@ -11,8 +11,9 @@
 
 Not every message needs GPT-4 or Claude Opus. A "hello" can go to a fast, cheap model. A system-design question deserves the best. **Claw Router** makes this decision for you:
 
+- **Trait-based matching**: Declare what each model is good at, the router does the matching
 - **Rule-only mode**: Local computation, < 1ms, zero API calls
-- **LLM-assisted mode**: Only triggers LLM when rule-based score is near tier boundaries (±0.08), ~70% messages skip LLM calls
+- **LLM-assisted mode**: Triggers LLM for tier boundary refinement and model conflict arbitration
 
 ```
 User: "hi"           → TRIVIAL  → doubao-seed-code     (fast, cheap)
@@ -80,9 +81,9 @@ Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
 }
 ```
 
-### 3. Configure (Optional)
+### 2. Configure Models
 
-**Important:** Plugin config must be placed under the `config` key:
+**Important:** Plugin config must be placed under the `config` key. Declare each model's traits (what it's good at):
 
 ```json
 {
@@ -91,14 +92,20 @@ Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
       "claw-router": {
         "enabled": true,
         "config": {
-          "thresholds": [0.20, 0.42, 0.58, 0.78],
-          "tiers": {
-            "TRIVIAL":  { "primary": "volcengine/doubao-seed-code" },
-            "SIMPLE":   { "primary": "volcengine/doubao-seed-code" },
-            "MODERATE": { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
-            "COMPLEX":  { "primary": "api-proxy-gpt/gpt-5.3-codex-high" },
-            "EXPERT":   { "primary": "api-proxy-claude/claude-opus-4-6" }
-          },
+          "models": [
+            {
+              "id": "anthropic/claude-sonnet",
+              "traits": ["coding", "analysis", "COMPLEX", "EXPERT"]
+            },
+            {
+              "id": "openai/gpt-4o-mini",
+              "traits": ["chat", "translation", "TRIVIAL", "SIMPLE"]
+            },
+            {
+              "id": "google/gemini-pro",
+              "traits": ["writing", "research", "MODERATE", "COMPLEX"]
+            }
+          ],
           "logging": true
         }
       }
@@ -107,13 +114,17 @@ Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
 }
 ```
 
+Trait vocabulary (fixed):
+- **Tier**: `TRIVIAL`, `SIMPLE`, `MODERATE`, `COMPLEX`, `EXPERT`
+- **TaskType**: `coding`, `writing`, `chat`, `analysis`, `translation`, `math`, `research`, `other`
+
 ---
 
 ## Architecture
 
 ```
 ┌──────────────────────────────────────────────────┐
-│                    User Message                        │
+│                    User Message                  │
 └──────────────────────┬───────────────────────────┘
                        │
                        ▼
@@ -123,39 +134,34 @@ Add to your OpenClaw config (`~/.openclaw/openclaw.json`):
                       │ no match
                       ▼
      ┌────────────────────────────────────┐
-     │  8-Dimension Rule Scorer (< 1ms)    │
-     │                                    │
-     │  Reasoning(0.20) Code(0.18)        │
-     │  TaskSteps(0.15) Domain(0.12)      │
-     │  Output(0.10)    Creativity(0.10)  │
-     │  Context(0.08)   Length(0.07)      │
-     └───────────────────┬────────────────┘
-                         │ calibrated score
+     │  8-Dimension Rule Scorer (< 1ms)  │ → Tier
+     └───────────────────┬───────────────┘
+                         │
                          ▼
-              ┌──────────────────┐
-              │ Boundary Check    │
-              │ (±0.08 of tier)   │
-              └────────┬─────────┘
-                ┌──────┴──────┐
-          Not near       Near boundary
-          boundary       + LLM enabled
-                │              │
-                │              ▼
-                │    ┌──────────────────┐
-                │    │ LLM Classifier    │
-                │    │ (tier+confidence) │
-                │    └────────┬─────────┘
-                │             │
-                │             ▼
-                │    ┌──────────────────┐
-                │    │ Weighted Merge    │
-                │    │ rule×(1-w)+llm×w │
-                │    └────────┬─────────┘
-                │             │
-                └──────┬──────┘
-                       ▼
+     ┌────────────────────────────────────┐
+     │  Task Classifier (keywords)       │ → TaskType
+     └───────────────────┬───────────────┘
+                         │
+                         ▼
+     ┌────────────────────────────────────┐
+     │  Trait Matcher                    │
+     │  traits = [Tier, TaskType]        │
+     │  Score each model's traits        │
+     │  Select best match                │
+     └───────────────────┬───────────────┘
+                  ┌──────┴──────┐
+            Unique best    Multiple tied
+                  │              │
+                  │              ▼
+                  │    ┌──────────────────┐
+                  │    │ LLM Arbitration  │
+                  │    │ (picks best one) │
+                  │    └────────┬─────────┘
+                  │             │
+                  └──────┬──────┘
+                         ▼
               ┌────────────────┐
-              │ Tier → Model    │
+              │  Final Model   │
               └────────────────┘
 ```
 
@@ -172,14 +178,11 @@ Tool: smart_route
 Input: { "message": "Design a distributed caching system with sharding" }
 Output: {
   "tier": "EXPERT",
-  "model": "api-proxy-claude/claude-opus-4-6",
+  "taskType": "coding",
+  "model": "anthropic/claude-sonnet",
+  "matchSource": "trait",
   "score": 0.8234,
-  "dimensions": {
-    "reasoning": 0.5,
-    "codeTech": 0.65,
-    "domainExpert": 0.7,
-    ...
-  }
+  "candidates": [...]
 }
 ```
 
@@ -211,17 +214,17 @@ await rpc('route.stats');
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `tiers` | `Record<Tier, { primary, fallback? }>` | all `"default"` | Model mapping per tier |
+| `models` | `ModelProfile[]` | `[{id:'default', traits:[...all]}]` | Model trait declarations |
 | `thresholds` | `[n, n, n, n]` | `[0.20, 0.42, 0.58, 0.78]` | Score boundaries between tiers |
 | `scoring.weights` | `Record<Dimension, number>` | See below | Override dimension weights |
 | `logging` | `boolean` | `false` | Enable verbose decision logs |
-| `llmScoring.enabled` | `boolean` | `false` | Enable LLM-assisted scoring |
-| `llmScoring.model` | `string` | — | LLM model for classification |
+| `llmScoring.enabled` | `boolean` | `false` | Enable LLM-assisted scoring & arbitration |
+| `llmScoring.model` | `string` | — | LLM model for scoring/arbitration |
 | `llmScoring.apiKey` | `string` | — | LLM API key |
 | `llmScoring.baseUrl` | `string` | — | LLM API base URL |
 | `llmScoring.apiPath` | `string` | `/v1/chat/completions` | API endpoint path |
 
-### LLM-Assisted Scoring
+### LLM Assist (Optional)
 
 ```json
 {
@@ -234,7 +237,11 @@ await rpc('route.stats');
 }
 ```
 
-LLM scoring **only triggers when the rule-based score falls within ±0.08 of a tier threshold**, skipping ~70% of messages. Includes a 3-second timeout with automatic fallback to rule-based results.
+LLM is invoked in two scenarios:
+1. **Tier boundary**: Rule score near threshold (±0.08) — LLM refines complexity (~70% skip)
+2. **Model arbitration**: Multiple models tie on trait match — LLM picks best one
+
+Includes 3-second timeout with automatic fallback.
 
 ### Default Weights
 
@@ -289,24 +296,27 @@ npm test
 ```
 claw-router/
 ├── index.ts                  # Plugin entry point
-├── openclaw.plugin.json      # Plugin manifest
+├── openclaw.plugin.json      # Plugin manifest & config schema
 ├── src/
 │   ├── router/
-│   │   ├── engine.ts         # Routing engine (rules → boundary → LLM → merge)
+│   │   ├── engine.ts         # Routing engine (rules → tier → traits → match)
+│   │   ├── model-matcher.ts  # Trait matching engine
+│   │   ├── task-classifier.ts # Task type classifier
 │   │   ├── scorer.ts         # 8-dimension scorer
-│   │   ├── llm-scorer.ts     # LLM classifier (conditional trigger)
+│   │   ├── llm-scorer.ts     # LLM scoring & arbitration
 │   │   ├── keywords.ts       # Bilingual keyword library
 │   │   ├── overrides.ts      # Hard-rule overrides
 │   │   └── types.ts          # TypeScript types
 │   ├── config.ts             # Configuration resolver
 │   └── logger.ts             # Decision logger
 ├── test/
-│   ├── engine.test.ts        # Integration tests (75 cases)
-│   ├── scorer.test.ts        # Unit tests
+│   ├── engine.test.ts        # Integration tests
+│   ├── model-matcher.test.ts # Trait matching tests
+│   ├── scorer.test.ts        # Dimension scorer tests
+│   ├── task-classifier.test.ts # Task classifier tests
 │   └── fixtures.ts           # 35+ test fixtures
 └── skills/
-    └── smart-router/
-        └── SKILL.md
+    └── smart-router/SKILL.md
 ```
 
 ---
@@ -317,17 +327,17 @@ See [ROADMAP.md](./ROADMAP.md) for detailed development plans.
 
 ### Recent Updates ✅
 
-**v1.1.0 (Released)**
-- ✅ LLM-assisted scoring with conditional boundary triggering (±0.08)
-- ✅ Sigmoid calibration (k=8, mid=0.18), grid-search optimized (52% → 71% exact match)
-- ✅ 75 test cases (up from 57), including LLM scorer unit tests
-- ✅ Improved code context detection with regex patterns
+**v2.0.0 (Released)**
+- ✅ Trait-based model routing: declare model capabilities, router matches automatically
+- ✅ LLM arbitration for tied model candidates
+- ✅ Task types expanded: +math, +research
+- ✅ 127 test cases across 14 suites
 
 ### Coming Soon 🚀
 
-- **Fallback Auto-Switch** — Automatic failover to fallback model on primary failure
 - **Learning & Feedback** — Record routing decisions and adapt based on user corrections
 - **Context-Aware Routing** — Consider conversation history for better decisions
+- **Route Decision Visualization** — Web UI with radar charts and historical trends
 
 ---
 

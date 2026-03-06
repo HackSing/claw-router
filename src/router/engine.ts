@@ -1,17 +1,20 @@
 /**
  * @aiwaretop/claw-router — Routing Engine
  *
- * 编排流程：overrides → 规则评分 → 边界检测 → 条件 LLM → 加权融合 → tier 映射 → 模型选择
+ * 编排流程：overrides → 规则评分 → 边界检测 → 条件 LLM → 加权融合 → tier 映射
+ *          → 任务分类 → trait 提取 → 模型匹配 → [LLM 仲裁] → 最终决策
  */
 
 import {
-  Tier, Dimension,
+  Tier, Dimension, TaskType,
   DEFAULT_WEIGHTS, DEFAULT_THRESHOLDS,
-  type ScoreResult, type RouteDecision,
+  type ScoreResult, type RouteDecision, type MatchSource,
 } from './types';
 import type { ResolvedConfig } from '../config';
 import { checkOverrides } from './overrides';
 import { scoreDimensions } from './scorer';
+import { classifyTask } from './task-classifier';
+import { extractTraits, scoreModels, selectModel } from './model-matcher';
 import { LlmScorer } from './llm-scorer';
 
 // ── LLM Scorer Instance ───────────────────────────────────────────────────
@@ -59,11 +62,11 @@ export function isNearBoundary(
 // ── Public API ──────────────────────────────────────────────────────────────
 
 /**
- * 路由消息：确定 tier 和模型。
+ * 路由消息：确定 tier、taskType 和最优模型。
  *
  * @param message  用户原始消息
  * @param config   解析后的插件配置
- * @returns        RouteDecision（tier、model、评分细节、延迟）
+ * @returns        RouteDecision（tier、taskType、model、匹配细节、延迟）
  */
 export async function route(message: string, config: ResolvedConfig): Promise<RouteDecision> {
   const t0 = performance.now();
@@ -72,7 +75,7 @@ export async function route(message: string, config: ResolvedConfig): Promise<Ro
   const override = checkOverrides(message);
   if (override) {
     const score = buildOverrideScore(override.tier, override.rule);
-    return finalize(score, config, t0);
+    return finalize(score, config, message, t0);
   }
 
   // 2. 8 维度规则评分（本地，< 1ms）
@@ -91,7 +94,7 @@ export async function route(message: string, config: ResolvedConfig): Promise<Ro
         if (llmResult) {
           const llmScore = llmScorer.convertToScoreResult(llmResult);
           const merged = mergeScores(ruleScore, llmScore, llmResult.confidence);
-          return finalize(merged, config, t0);
+          return finalize(merged, config, message, t0);
         }
       } catch (error) {
         console.error('[claw-router] LLM 评估错误，回退到规则结果:', error);
@@ -100,7 +103,7 @@ export async function route(message: string, config: ResolvedConfig): Promise<Ro
   }
 
   // 4. 返回规则评分结果
-  return finalize(ruleScore, config, t0);
+  return finalize(ruleScore, config, message, t0);
 }
 
 /**
@@ -183,18 +186,56 @@ function buildOverrideScore(tier: Tier, rule: string): ScoreResult {
   };
 }
 
-/** 从 tier 配置解析模型并构建最终 RouteDecision。 */
-function finalize(
+/**
+ * 从 trait 匹配中选择最优模型并构建最终 RouteDecision。
+ *
+ * 流程：
+ * 1. 分类任务类型
+ * 2. 提取 traits（tier + taskType）
+ * 3. 对所有模型评分
+ * 4. 选择最优模型（并列时触发 LLM 仲裁）
+ */
+async function finalize(
   score: ScoreResult,
   config: ResolvedConfig,
+  message: string,
   t0: number,
-): RouteDecision {
-  const tierConf = config.tiers[score.tier];
+): Promise<RouteDecision> {
+  const taskType = classifyTask(message);
+
+  // trait 匹配
+  const traits = extractTraits(score.tier, taskType);
+  const candidates = scoreModels(traits, config.models);
+  const selection = selectModel(candidates);
+
+  let modelId = selection.modelId;
+  let matchSource: MatchSource = 'trait';
+
+  // 如果多候选并列且 LLM 可用，触发仲裁
+  if (selection.needsArbitration && llmScorer && config.llmScoring?.enabled) {
+    try {
+      const arbitrationResult = await llmScorer.arbitrate(message, selection.tiedCandidates);
+      if (arbitrationResult) {
+        modelId = arbitrationResult.model;
+        matchSource = 'llm_arbitration';
+      }
+    } catch (error) {
+      console.error('[claw-router] LLM 仲裁错误，使用默认选择:', error);
+    }
+  }
+
+  // 如果最终模型是 default 且有其他非 default 候选，标记来源
+  if (modelId === 'default' && candidates.some(c => c.model.id !== 'default' && c.score > 0)) {
+    matchSource = 'default';
+  }
+
   return {
     tier: score.tier,
-    model: tierConf.primary,
-    fallback: tierConf.fallback,
+    taskType,
+    model: modelId,
     score,
     latencyMs: parseFloat((performance.now() - t0).toFixed(3)),
+    matchSource,
+    candidates: candidates.slice(0, 3),  // 只保留 top 3 用于日志
   };
 }
