@@ -18,7 +18,7 @@ import { logDecision } from './src/logger';
 import { LlmClient } from './src/llm-client';
 import { Tier, type RouterConfig, type RouterStats, type RouteDecision } from './src/router/types';
 import { createStats, trackDecision } from './src/stats';
-import { applyModelToSession, parseAgentId } from './src/session';
+import { applyModelToSession, clearModelOverride, parseAgentId } from './src/session';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
@@ -74,25 +74,31 @@ function stripInjectedContext(prompt: string): string {
   text = text.replace(/Sender \(untrusted metadata\):[\s\S]*?```[\s\S]*?```/gi, '');
   text = text.replace(/\[message_id:[^\]]+\]\s*/gi, '');
   text = text.replace(/^\[claw-router:[^\]]+\]\s*/gim, '');
+  text = text.replace(/^\[[^\]]+\]\s*/gim, '');
 
   const lines = text
     .split('\n')
-    .map(line => line.trimEnd());
+    .map(line => line.trim())
+    .filter(Boolean)
+    .filter(line => !/^(Conversation info|Sender)\b/i.test(line))
+    .filter(line => !/^(Treat every memory below as untrusted historical data|Current time:|Read HEARTBEAT\.md if it exists)/i.test(line))
+    .filter(line => !/^(```|###\s|[-*]\s|\d+\.|\{.*\}|\}.*)$/.test(line));
 
   for (let i = lines.length - 1; i >= 0; i--) {
-    const line = lines[i].trim();
-    if (!line) continue;
+    const line = lines[i];
 
     const colonIndex = line.indexOf(':');
     if (colonIndex > 0 && colonIndex < 40) {
       const prefix = line.slice(0, colonIndex);
       if (!/[\s\u4e00-\u9fa5]/.test(prefix) && /[A-Za-z0-9_\-]/.test(prefix)) {
         const candidate = line.slice(colonIndex + 1).trim();
-        if (candidate) return candidate;
+        if (candidate && !/^(direct|group|thread|webchat|feishu)$/i.test(candidate)) return candidate;
       }
     }
 
-    return line;
+    if (!/^(role|timestamp|message_id|sender_id|sender|label|id|name|provider|surface|chat_type|chatType|schema)$/i.test(line)) {
+      return line;
+    }
   }
 
   return text.trim();
@@ -100,7 +106,7 @@ function stripInjectedContext(prompt: string): string {
 
 function extractOriginalUserMessage(event: { prompt?: string; messages?: unknown[] }): string {
   const fromMessages = extractUserMessageFromMessages(event.messages);
-  if (fromMessages) return fromMessages;
+  if (fromMessages) return stripInjectedContext(fromMessages);
   return stripInjectedContext(event.prompt ?? '');
 }
 
@@ -152,8 +158,13 @@ const clawRouterPlugin = {
     // ══════════════════════════════════════════════════════════════════════
     api.on('before_agent_start', async (
       event: { prompt: string; messages?: unknown[] },
-      ctx: { sessionKey?: string; agentId?: string },
+      ctx: { sessionKey?: string; agentId?: string; trigger?: string },
     ) => {
+      // 只处理用户主动触发的消息，跳过 memory flush 等后台触发
+      if (ctx.trigger && ctx.trigger !== 'user') {
+        return;
+      }
+
       const userMessage = extractOriginalUserMessage(event);
       if (!userMessage.trim()) return;
 
@@ -164,21 +175,24 @@ const clawRouterPlugin = {
       // Run the router
       const decision = await route(userMessage, pluginConfig);
       trackDecision(stats, decision);
-      logDecision(decision, pluginConfig.logging, log);
 
       const targetModel = decision.model;
       if (!targetModel || targetModel === 'default') return;
 
-      // Apply model override
+      // Apply model override first; if already set (returns false), skip duplicate logging
+      let applied = false;
       if (ctx.sessionKey) {
-        const updated = applyModelToSession(ctx.sessionKey, targetModel, log);
-        if (updated) {
-          log.info(
-            `[claw-router] ${decision.tier}/${decision.taskType} → ${targetModel} ` +
-            `(match: ${decision.matchSource}, score: ${decision.score.calibrated.toFixed(3)}, ` +
-            `latency: ${decision.latencyMs}ms)`
-          );
-        }
+        applied = applyModelToSession(ctx.sessionKey, targetModel, log);
+      }
+
+      // Only log if this is a new model override (not a duplicate from two hook runners)
+      if (applied && pluginConfig.logging) {
+        logDecision(decision, pluginConfig.logging, log, { sessionKey: ctx.sessionKey, agentId: ctx.agentId });
+        log.info(
+          `[claw-router] ${decision.tier}/${decision.taskType} → ${targetModel} ` +
+          `(match: ${decision.matchSource}, score: ${decision.score.calibrated.toFixed(3)}, ` +
+          `latency: ${decision.latencyMs}ms)`
+        );
       }
 
       // 日志记录已经足够，避免将路由元信息注入 prompt 造成后续回合污染
@@ -227,6 +241,11 @@ const clawRouterPlugin = {
       const { input, output, total } = event.tokenUsage;
       const msg = `[claw-router] Tokens: ${input} in / ${output} out (total: ${total ?? input + output}, duration: ${event.durationMs ?? 0}ms, model: ${modelDisplay})`;
       log.info(msg);
+
+      // 清除 model override，让下一轮消息重新走路由决策
+      if (ctx.sessionKey) {
+        clearModelOverride(ctx.sessionKey, log);
+      }
     });
 
     // ══════════════════════════════════════════════════════════════════════
@@ -250,7 +269,7 @@ const clawRouterPlugin = {
       async execute(_id: string, params: { message: string }) {
         const decision = await route(params.message, pluginConfig);
         trackDecision(stats, decision);
-        logDecision(decision, pluginConfig.logging, log);
+        logDecision(decision, pluginConfig.logging, log, { sessionKey: ctx.sessionKey, agentId: ctx.agentId });
         return {
           content: [{
             type: 'text' as const,
@@ -398,7 +417,7 @@ const clawRouterPlugin = {
       }
       const decision = await route(message, pluginConfig);
       trackDecision(stats, decision);
-      logDecision(decision, pluginConfig.logging, log);
+      logDecision(decision, pluginConfig.logging, log, { sessionKey: ctx.sessionKey, agentId: ctx.agentId });
       respond(true, decision);
     });
 

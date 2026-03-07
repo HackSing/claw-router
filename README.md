@@ -14,6 +14,7 @@ Not every message needs GPT-4 or Claude Opus. A "hello" can go to a fast, cheap 
 - **Trait-based matching**: Declare what each model is good at, the router does the matching
 - **Rule-only mode**: Local computation, < 1ms, zero API calls
 - **LLM-assisted mode**: Triggers LLM for tier boundary refinement and model conflict arbitration
+- **Turn-by-turn re-routing**: Session model overrides are cleared after `agent_end`, so each new message is routed again instead of inheriting the previous turn's model
 
 ```
 User: "hi"           → TRIVIAL  → doubao-seed-code     (fast, cheap)
@@ -119,6 +120,13 @@ Trait vocabulary (fixed):
 - **TaskType**: `coding`, `writing`, `chat`, `analysis`, `translation`, `math`, `research`, `other`
 
 ---
+
+## Hook Behavior Notes
+
+- `before_agent_start` only applies routing for `trigger === "user"`
+- Background triggers such as memory flush are ignored for routing decisions
+- The plugin writes a temporary model override before the run, then clears it in `agent_end`
+- If OpenClaw invokes repeated user hooks for the same turn, only the first successful override emits the full routing decision log
 
 ## Architecture
 

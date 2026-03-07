@@ -11,7 +11,7 @@ interface Logger {
   info: (msg: string) => void;
 }
 
-export function logDecision(decision: RouteDecision, logging: boolean, logger?: Logger): void {
+export function logDecision(decision: RouteDecision, logging: boolean, logger?: Logger, context?: { sessionKey?: string; agentId?: string }): void {
   if (!logging) return;
 
   const { tier, model, score, latencyMs } = decision;
@@ -24,8 +24,13 @@ export function logDecision(decision: RouteDecision, logging: boolean, logger?: 
     ? `  ⚡ Override: ${score.overrideApplied}\n`
     : '';
 
+  const ctxInfo = context?.agentId || context?.sessionKey
+    ? `  Context:    ${context.agentId || context.sessionKey}\n`
+    : '';
+
   const message =
     `[claw-router] ─── Route Decision ───\n` +
+    ctxInfo +
     `  Tier:       ${tier}\n` +
     `  TaskType:   ${decision.taskType}\n` +
     `  Model:      ${model}\n` +

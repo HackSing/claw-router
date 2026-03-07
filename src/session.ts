@@ -91,3 +91,52 @@ export function applyModelToSession(
         return false;
     }
 }
+
+/**
+ * 清除 session 的模型覆盖，恢复默认模型。
+ * 在 agent_end 时调用，让下一轮消息重新走路由决策。
+ */
+export function clearModelOverride(
+    sessionKey: string,
+    log: { info?: (m: string) => void; warn?: (m: string) => void },
+): boolean {
+    try {
+        const agentId = parseAgentId(sessionKey);
+        const storePath = path.join(
+            process.env.HOME || '/home/ubuntu',
+            '.openclaw', 'agents', agentId, 'sessions', 'sessions.json',
+        );
+
+        if (!fs.existsSync(storePath)) {
+            return false;
+        }
+
+        const raw = fs.readFileSync(storePath, 'utf-8');
+        const store = JSON.parse(raw);
+        const entry = store[sessionKey];
+
+        if (!entry) {
+            return false;
+        }
+
+        // 清除 override
+        let changed = false;
+        if (entry.modelOverride) {
+            delete entry.modelOverride;
+            changed = true;
+        }
+        if (entry.providerOverride) {
+            delete entry.providerOverride;
+            changed = true;
+        }
+
+        if (changed) {
+            fs.writeFileSync(storePath, JSON.stringify(store, null, 2));
+        }
+
+        return true;
+    } catch (err) {
+        log.warn?.(`[claw-router] Failed to clear model override: ${err}`);
+        return false;
+    }
+}
