@@ -27,6 +27,82 @@ import * as path from 'node:path';
 let pluginConfig: ResolvedConfig;
 const stats = createStats();
 
+function extractTextContent(content: unknown): string {
+  if (typeof content === 'string') return content;
+  if (Array.isArray(content)) {
+    return content
+      .map(item => {
+        if (typeof item === 'string') return item;
+        if (item && typeof item === 'object' && 'text' in item) {
+          const text = (item as { text?: unknown }).text;
+          return typeof text === 'string' ? text : '';
+        }
+        return '';
+      })
+      .filter(Boolean)
+      .join('\n');
+  }
+  if (content && typeof content === 'object' && 'text' in content) {
+    const text = (content as { text?: unknown }).text;
+    return typeof text === 'string' ? text : '';
+  }
+  return '';
+}
+
+function extractUserMessageFromMessages(messages: unknown[] | undefined): string {
+  if (!Array.isArray(messages)) return '';
+
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const msg = messages[i];
+    if (!msg || typeof msg !== 'object') continue;
+
+    const role = (msg as { role?: unknown }).role;
+    if (role !== 'user') continue;
+
+    const content = extractTextContent((msg as { content?: unknown }).content);
+    if (content.trim()) return content.trim();
+  }
+
+  return '';
+}
+
+function stripInjectedContext(prompt: string): string {
+  let text = prompt;
+
+  text = text.replace(/<relevant-memories>[\s\S]*?<\/relevant-memories>/gi, '');
+  text = text.replace(/Conversation info \(untrusted metadata\):[\s\S]*?```[\s\S]*?```/gi, '');
+  text = text.replace(/Sender \(untrusted metadata\):[\s\S]*?```[\s\S]*?```/gi, '');
+  text = text.replace(/\[message_id:[^\]]+\]\s*/gi, '');
+  text = text.replace(/^\[claw-router:[^\]]+\]\s*/gim, '');
+
+  const lines = text
+    .split('\n')
+    .map(line => line.trimEnd());
+
+  for (let i = lines.length - 1; i >= 0; i--) {
+    const line = lines[i].trim();
+    if (!line) continue;
+
+    const colonIndex = line.indexOf(':');
+    if (colonIndex > 0 && colonIndex < 40) {
+      const prefix = line.slice(0, colonIndex);
+      if (!/[\s\u4e00-\u9fa5]/.test(prefix) && /[A-Za-z0-9_\-]/.test(prefix)) {
+        const candidate = line.slice(colonIndex + 1).trim();
+        if (candidate) return candidate;
+      }
+    }
+
+    return line;
+  }
+
+  return text.trim();
+}
+
+function extractOriginalUserMessage(event: { prompt?: string; messages?: unknown[] }): string {
+  const fromMessages = extractUserMessageFromMessages(event.messages);
+  if (fromMessages) return fromMessages;
+  return stripInjectedContext(event.prompt ?? '');
+}
 
 // ── Plugin export ───────────────────────────────────────────────────────────
 
@@ -78,7 +154,7 @@ const clawRouterPlugin = {
       event: { prompt: string; messages?: unknown[] },
       ctx: { sessionKey?: string; agentId?: string },
     ) => {
-      const userMessage = event.prompt ?? '';
+      const userMessage = extractOriginalUserMessage(event);
       if (!userMessage.trim()) return;
 
       // 如果只有 default 模型（用户没配 models），跳过路由
