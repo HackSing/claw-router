@@ -133,44 +133,37 @@ Trait vocabulary (fixed):
 ```
 ┌──────────────────────────────────────────────────┐
 │                    User Message                  │
-└──────────────────────┬───────────────────────────┘
+└──────────────────────┬───────────────────────┘
                        │
                        ▼
               ┌────────────────┐
-              │  Hard Overrides  │ ◄── ≤5 chars? 3+ code blocks?
-              └───────┬────────┘     "system design"?
+              │  Hard Overrides  │ ◄── ≤5 chars? 3+ code blocks? "system design"?
+              └───────┬───────┘
                       │ no match
                       ▼
-     ┌────────────────────────────────────┐
-     │  8-Dimension Rule Scorer (< 1ms)  │ → Tier
-     └───────────────────┬───────────────┘
-                         │
-                         ▼
-     ┌────────────────────────────────────┐
-     │  Task Classifier (keywords)       │ → TaskType
-     └───────────────────┬───────────────┘
-                         │
-                         ▼
-     ┌────────────────────────────────────┐
-     │  Trait Matcher                    │
-     │  traits = [Tier, TaskType]        │
-     │  Score each model's traits        │
-     │  Select best match                │
-     └───────────────────┬───────────────┘
-                  ┌──────┴──────┐
-            Unique best    Multiple tied
-                  │              │
-                  │              ▼
-                  │    ┌──────────────────┐
-                  │    │ LLM Arbitration  │
-                  │    │ (picks best one) │
-                  │    └────────┬─────────┘
-                  │             │
-                  └──────┬──────┘
-                         ▼
-              ┌────────────────┐
-              │  Final Model   │
-              └────────────────┘
+            ┌────────────────────────────────────────┐
+            │  Semantic Routing (if enabled, default on)    │
+            │  bge-small-zh-v1.5 · cosine similarity      │
+            └────────────────────┬───────────────────┘
+                                   │ tier hint (or skip)
+                                   ▼
+ ┌──────────────────────────┐  ┌────────────────────┐
+ │ 8-Dimension Heuristic         │  │ Context-Awareness    │
+ │ Scorer (<1ms) → Tier          │  │ history boost        │
+ └────────────┬─────────────┘  └────────┬───────────┘
+              └───────────────────────────────┘
+                                   ▼ │ LLM refine if near boundary
+                                   │
+ ┌──────────────────────────┐  ┌────────────────────┐
+ │ Task Classifier               │  │ Trait Matcher        │
+ │ keywords → TaskType           │  │ score + select model │
+ └────────────┬─────────────┘  └────────┬───────────┘
+              └───────────────────────────────┘
+                                   │ (tied → LLM Arbitration)
+                                   ▼
+                        ┌────────────┐
+                        │ Final Model  │
+                        └────────────┘
 ```
 
 ---
@@ -226,7 +219,7 @@ await rpc('route.stats');
 | `thresholds` | `[n, n, n, n]` | `[0.20, 0.42, 0.58, 0.78]` | Score boundaries between tiers |
 | `scoring.weights` | `Record<Dimension, number>` | See below | Override dimension weights |
 | `logging` | `boolean` | `false` | Enable verbose decision logs |
-| `enableSemanticRouting` | `boolean` | `false` | Enable local embedding-based semantic routing |
+| `enableSemanticRouting` | `boolean` | `true` | 启用本地 embedding 语义路由（bge-small-zh-v1.5）。首次启动自动下载模型，后续冷启动读磁盘 anchor 缓存。设为 `false` 可禁用 |
 | `llmScoring.enabled` | `boolean` | `false` | Enable LLM-assisted scoring & arbitration |
 | `llmScoring.model` | `string` | — | LLM model for scoring/arbitration |
 | `llmScoring.apiKey` | `string` | — | LLM API key |
@@ -304,26 +297,31 @@ npm test
 
 ```
 claw-router/
-├── index.ts                  # Plugin entry point
-├── openclaw.plugin.json      # Plugin manifest & config schema
+├── index.ts                    # 插件入口
+├── openclaw.plugin.json        # 插件清单 & 配置 Schema
 ├── src/
 │   ├── router/
-│   │   ├── engine.ts         # Routing engine (rules → tier → traits → match)
-│   │   ├── model-matcher.ts  # Trait matching engine
-│   │   ├── task-classifier.ts # Task type classifier
-│   │   ├── scorer.ts         # 8-dimension scorer
-│   │   ├── llm-scorer.ts     # LLM scoring & arbitration
-│   │   ├── keywords.ts       # Bilingual keyword library
-│   │   ├── overrides.ts      # Hard-rule overrides
-│   │   └── types.ts          # TypeScript types
-│   ├── config.ts             # Configuration resolver
-│   └── logger.ts             # Decision logger
+│   │   ├── engine.ts             # 路由主流程
+│   │   ├── semantic.ts           # 语义路由（本地嵌入 + anchor 缓存）
+│   │   ├── context.ts            # 历史上下文感知
+│   │   ├── math-utils.ts         # 共享数学工具（calibrate/scoreToTier/clamp）
+│   │   ├── semantic-signals.ts   # 语义信号提取
+│   │   ├── model-matcher.ts      # Trait 匹配引擎
+│   │   ├── task-classifier.ts    # 任务类型分类器
+│   │   ├── scorer.ts             # 8 维度评分
+│   │   ├── llm-scorer.ts         # LLM 评分 & 仲裁
+│   │   ├── keywords.ts           # 中英文关键词库
+│   │   ├── overrides.ts          # 硬规则覆盖
+│   │   └── types.ts              # 全局类型（含 ResolvedConfig）
+│   ├── config.ts               # 配置解析 & 验证
+│   └── logger.ts               # 决策日志
 ├── test/
-│   ├── engine.test.ts        # Integration tests
-│   ├── model-matcher.test.ts # Trait matching tests
-│   ├── scorer.test.ts        # Dimension scorer tests
-│   ├── task-classifier.test.ts # Task classifier tests
-│   └── fixtures.ts           # 35+ test fixtures
+│   ├── engine.test.ts          # 端到端集成测试
+│   ├── extended-data.test.ts   # 真实业务极端用例
+│   ├── model-matcher.test.ts   # Trait 匹配测试
+│   ├── scorer.test.ts          # 维度评分测试
+│   ├── task-classifier.test.ts # 任务分类测试
+│   └── fixtures.ts             # 35+ 测试固件
 └── skills/
     └── claw-router/SKILL.md
 ```
@@ -336,16 +334,22 @@ See [ROADMAP.md](./ROADMAP.md) for detailed development plans.
 
 ### Recent Updates ✅
 
+**v2.0.1 (Released)**
+- ✅ 打破循环依赖：新增 `math-utils.ts` 统一存放共享算法
+- ✅ LRU 缓存修复、跨平台路径修复、类型安全提升
+- ✅ Anchor 向量磁盘缓存（`~/.claw-router/anchor-cache.json`）
+- ✅ 162 测试用例 / 24 个套件
+
 **v2.0.0 (Released)**
 - ✅ Trait-based model routing: declare model capabilities, router matches automatically
+- ✅ 历史上下文感知 (Context-Awareness)
+- ✅ 本地语义路由 (Semantic Routing): bge-small-zh-v1.5 + 余弦相似度
 - ✅ LLM arbitration for tied model candidates
 - ✅ Task types expanded: +math, +research
-- ✅ 127 test cases across 14 suites
 
 ### Coming Soon 🚀
 
 - **Learning & Feedback** — Record routing decisions and adapt based on user corrections
-- **Context-Aware Routing** — Consider conversation history for better decisions
 - **Route Decision Visualization** — Web UI with radar charts and historical trends
 
 ---
