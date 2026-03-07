@@ -171,12 +171,12 @@ Trait 词表（固定）：
 
 ## 功能
 
-### 🎯 Agent 工具：`smart_route`
+### 🎯 Agent 工具：`claw_route`
 
 Agent 可以调用此工具获取路由建议：
 
 ```
-工具: smart_route
+工具: claw_route
 输入: { "message": "帮我设计一个分布式缓存系统" }
 输出: {
   "tier": "EXPERT",

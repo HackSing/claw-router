@@ -1,5 +1,5 @@
 ---
-name: smart-router
+name: claw-router
 description: Trait-based intelligent model routing — automatically routes messages to the best AI model
 ---
 
@@ -92,7 +92,7 @@ When enabled, LLM is invoked in two scenarios:
 
 - `/route` — Show routing status and stats
 - `/route <message>` — Test-route a message
-- Agent tool `smart_route` — Programmatic routing query
+- Agent tool `claw_route` — Programmatic routing query
 
 ## Running Tests
 

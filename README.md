@@ -177,12 +177,12 @@ Trait vocabulary (fixed):
 
 ## Features
 
-### 🎯 Agent Tool: `smart_route`
+### 🎯 Agent Tool: `claw_route`
 
 The agent can call this tool to get routing recommendations:
 
 ```
-Tool: smart_route
+Tool: claw_route
 Input: { "message": "Design a distributed caching system with sharding" }
 Output: {
   "tier": "EXPERT",
@@ -324,7 +324,7 @@ claw-router/
 │   ├── task-classifier.test.ts # Task classifier tests
 │   └── fixtures.ts           # 35+ test fixtures
 └── skills/
-    └── smart-router/SKILL.md
+    └── claw-router/SKILL.md
 ```
 
 ---

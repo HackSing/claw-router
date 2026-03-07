@@ -5,7 +5,7 @@
  *
  * Registers:
  *   • Hook:           before_agent_start — auto-switch model per message
- *   • Agent tool:     smart_route — manual routing query
+ *   • Agent tool:     claw_route — manual routing query
  *   • Auto-reply cmd: /route — show status and stats
  *   • CLI commands:   openclaw route status / test
  *   • Gateway RPC:    route.decide, route.stats
@@ -344,11 +344,10 @@ const clawRouterPlugin = {
       }
     });
 
-    // ══════════════════════════════════════════════════════════════════════
-    // Agent Tool: smart_route
+    // Agent Tool: claw_route
     // ══════════════════════════════════════════════════════════════════════
     api.registerTool({
-      name: 'smart_route',
+      name: 'claw_route',
       description:
         'Analyze a user message and recommend the optimal model based on trait matching. ' +
         'Returns tier, taskType, model, match source, and dimension breakdown.',
