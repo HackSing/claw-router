@@ -6,9 +6,12 @@ import * as os from 'node:os';
 import * as crypto from 'node:crypto';
 
 // 配置 transformers 运行时环境
-env.allowLocalModels = false;    // 强制从远端拉取模型
-env.remoteHost = 'https://hf-mirror.com'; // 国内镜像
-env.useBrowserCache = false;     // Node 运行环境
+env.allowLocalModels = true;     // 允许从本地加载包含的模型权重
+env.localModelPath = path.join(__dirname, '../../models'); // 优先查找项目根目录下的 models/
+env.allowRemoteModels = true;    // 若本地没有，则回退从远端拉取模型
+env.remoteHost = 'https://hf-mirror.com'; // 采用国内镜像
+env.useBrowserCache = false;     // Node 运行级
+
 try {
     // ONNX WASM 线程数限制（低内存占用）
     (env as Record<string, unknown>).backends = {

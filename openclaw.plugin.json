@@ -1,7 +1,7 @@
 {
   "id": "claw-router",
   "name": "Claw Router — Smart Model Routing",
-  "version": "2.0.0",
+  "version": "2.0.3",
   "description": "Intelligent model routing plugin for OpenClaw — routes messages to optimal AI models based on trait-based capability matching",
   "author": "aiwaretop",
   "license": "AIWare Community License",
