@@ -68,38 +68,24 @@
 
 ## 安装方式
 
-有两种安装方式：
-
-### 方式一：从 npm 安装（推荐）
+为确保所有的底层依赖（尤其是本地语义路由引擎）都被正确打包，建议直接在 extensions 目录下克隆源码并安装：
 
 ```bash
-# 进入 OpenClaw 工作目录
-cd ~/.openclaw
+# 1. 进入 OpenClaw 的扩展目录
+mkdir -p ~/.openclaw/extensions
+cd ~/.openclaw/extensions
 
-# 安装 npm 包
-npm install @aiwaretop/claw-router
-
-# 复制到 extensions 目录（必须步骤！）
-cp -r node_modules/@aiwaretop/claw-router ~/.openclaw/extensions/claw-router
-```
-
-**注意：** OpenClaw 默认只从 `~/.openclaw/extensions/` 加载插件。npm 安装后必须手动复制！
-
-### 方式二：从源码安装
-
-```bash
-# 克隆仓库
+# 2. 直接在此处克隆仓库
 git clone https://github.com/HackSing/claw-router.git
-
-# 安装依赖
 cd claw-router
+
+# 3. 安装依赖（生成局部的 node_modules）
 npm install
 
-# 编译 TypeScript 到 JavaScript
+# 4. 编译 TypeScript 到 JavaScript
 npx tsc
 
-# 复制到 extensions 目录
-cp -r . ~/.openclaw/extensions/claw-router
+# 完成！插件及其依赖环境现已准备就绪。
 ```
 
 ---

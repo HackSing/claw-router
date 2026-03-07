@@ -26,38 +26,24 @@ User: "设计分布式架构"  → EXPERT   → claude-opus-4       (best)
 
 ## Installation
 
-You have two options to install claw-router:
-
-### Option 1: Install from npm (Recommended)
+To ensure all dependencies (especially local semantic routing engines) are packaged correctly, please install directly from the source repository into your extensions directory:
 
 ```bash
-# In your OpenClaw workspace
-cd ~/.openclaw
+# 1. Go to OpenClaw's extensions directory
+mkdir -p ~/.openclaw/extensions
+cd ~/.openclaw/extensions
 
-# Install the package
-npm install @aiwaretop/claw-router
-
-# Copy to extensions directory (required!)
-cp -r node_modules/@aiwaretop/claw-router ~/.openclaw/extensions/claw-router
-```
-
-**Note:** OpenClaw only loads plugins from `~/.openclaw/extensions/` by default. You must copy the files manually after npm install.
-
-### Option 2: Install from source
-
-```bash
-# Clone the repository
+# 2. Clone the repository directly here
 git clone https://github.com/HackSing/claw-router.git
-
-# Install dependencies
 cd claw-router
+
+# 3. Install production dependencies (creates a local node_modules)
 npm install
 
-# Compile TypeScript to JavaScript
+# 4. Compile TypeScript to JavaScript
 npx tsc
 
-# Copy to extensions directory
-cp -r . ~/.openclaw/extensions/claw-router
+# Done! The plugin is now fully self-contained with its dependencies.
 ```
 
 ---
