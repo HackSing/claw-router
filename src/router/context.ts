@@ -9,7 +9,7 @@
 import { Dimension, Tier, type ScoreResult } from './types';
 import { scoreDimensions } from './scorer';
 import { checkOverrides } from './overrides';
-import { calibrate, scoreToTier } from './engine';
+import { calibrate, scoreToTier } from './math-utils';
 
 /**
  * 评估历史上下文，并据此对当前消息的 ScoreResult 进行修正

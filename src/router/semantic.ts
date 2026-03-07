@@ -1,25 +1,35 @@
 import { pipeline, env } from '@xenova/transformers';
 import { Tier, TaskType } from './types';
 
-// Configure transformers context
-env.allowLocalModels = false;    // forces fetching from remote
-env.remoteHost = 'https://hf-mirror.com'; // Mirror for mainland China
-env.useBrowserCache = false;     // node environment
-// @ts-ignore
-env.backends.onnx.wasm.numThreads = 1; // Limit threading for low memory usage
+// 配置 transformers 运行时环境
+env.allowLocalModels = false;    // 强制从远端拉取模型
+env.remoteHost = 'https://hf-mirror.com'; // 国内镜像
+env.useBrowserCache = false;     // Node 运行环境
+try {
+    // ONNX WASM 线程数限制（低内存占用）
+    (env as Record<string, unknown>).backends = {
+        ...(env as Record<string, unknown>).backends as object,
+        onnx: { wasm: { numThreads: 1 } },
+    };
+} catch { /* 忽略不支持的环境 */ }
 
-let extractorInstance: any = null;
-let extPromise: Promise<any> | null = null;
+/** 特征提取管道的最小接口契约。 */
+interface Extractor {
+    (text: string, options: { pooling: string; normalize: boolean }): Promise<{ data: Float32Array }>;
+}
 
-// Lightweight model optimized for Chinese.
+let extractorInstance: Extractor | null = null;
+let extPromise: Promise<Extractor> | null = null;
+
+// 针对中文优化的轻量级模型
 const MODEL_NAME = 'Xenova/bge-small-zh-v1.5';
 
-export async function getExtractor(): Promise<any> {
+export async function getExtractor(): Promise<Extractor> {
     if (extractorInstance) return extractorInstance;
     if (!extPromise) {
         extPromise = pipeline('feature-extraction', MODEL_NAME, {
             quantized: true,
-        });
+        }) as Promise<Extractor>;
     }
     extractorInstance = await extPromise;
     return extractorInstance;

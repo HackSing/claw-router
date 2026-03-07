@@ -186,10 +186,10 @@ describe('LlmScorer — parseResponse & convertToScoreResult', () => {
     assert.equal(result.dimensions.length, 8);
   });
 
-  it('convertToScoreResult: EXPERT → calibrated ≈ 0.88', () => {
+  it('convertToScoreResult: EXPERT → calibrated ≈ 0.90', () => {
     const result = scorer.convertToScoreResult({ tier: Tier.EXPERT, confidence: 0.95, reasoning: 'test' });
     assert.equal(result.tier, Tier.EXPERT);
-    assert.equal(result.calibrated, 0.88);
+    assert.equal(result.calibrated, 0.90);
   });
 
   it('convertToScoreResult: 所有维度 raw 为 0', () => {

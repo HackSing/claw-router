@@ -6,3 +6,7 @@ configs/env.sh
 *.js
 !.eslintrc.js
 dist/
+
+# 调试产物
+*.log
+/test-*.ts

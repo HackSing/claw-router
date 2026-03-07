@@ -6,6 +6,7 @@
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';
+import * as os from 'node:os';
 
 /**
  * 从 sessionKey 解析 agentId。
@@ -40,7 +41,7 @@ export function applyModelToSession(
     try {
         const agentId = parseAgentId(sessionKey);
         const storePath = path.join(
-            process.env.HOME || '/home/ubuntu',
+            os.homedir(),
             '.openclaw', 'agents', agentId, 'sessions', 'sessions.json',
         );
 
@@ -103,7 +104,7 @@ export function clearModelOverride(
     try {
         const agentId = parseAgentId(sessionKey);
         const storePath = path.join(
-            process.env.HOME || '/home/ubuntu',
+            os.homedir(),
             '.openclaw', 'agents', agentId, 'sessions', 'sessions.json',
         );
 

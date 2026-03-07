@@ -36,6 +36,10 @@ export class RouteCache {
             return null;
         }
 
+        // LRU touch：将命中条目移至队列尾部，避免被错误淘汰
+        this.cache.delete(message);
+        this.cache.set(message, entry);
+
         return entry.decision;
     }
 

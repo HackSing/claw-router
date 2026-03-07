@@ -5,6 +5,8 @@
  * Phase 1 先落最小可用版本，优先统一 tech/review/analysis/chat 等高频信号。
  */
 
+import { clamp } from './math-utils';
+
 export interface SemanticContext {
   message: string;
   lower: string;
@@ -113,9 +115,7 @@ function scoreByPatterns(input: string, patterns: RegExp[], boost = 0.55): numbe
   return clamp(score);
 }
 
-function clamp(v: number, min = 0, max = 1): number {
-  return Math.max(min, Math.min(max, v));
-}
+// clamp 已提取到 math-utils.ts，通过顶部 import 引用。
 
 export function buildSemanticContext(message: string): SemanticContext {
   return {

@@ -10,6 +10,7 @@ import {
   DEFAULT_WEIGHTS, DEFAULT_THRESHOLDS,
   type ScoreResult, type RouteDecision, type MatchSource,
 } from './types';
+import { calibrate, scoreToTier, TIER_CALIBRATED_SCORES } from './math-utils';
 import type { ResolvedConfig } from '../config';
 import { checkOverrides } from './overrides';
 import { scoreDimensions } from './scorer';
@@ -84,7 +85,7 @@ export async function route(
     }
   }
 
-  // 3. Fallback Heuristics (兜底评分)
+  // 3. 启发式规则评分（语义未命中时的兜底）
   const dimensions = scoreDimensions(message, config.weights);
   let ruleScore: ScoreResult;
   if (semanticScore) {
@@ -97,10 +98,10 @@ export async function route(
     ruleScore = { dimensions, rawSum, calibrated, tier: ruleTier };
   }
 
-  // === Phase 1: Context Awareness 历史上下文修饰 ===
+  // 4. 上下文感知修饰
   ruleScore = applyContextModifier(message, history, ruleScore, config.weights, config.thresholds);
 
-  // 3. 条件触发 LLM 评分（仅在边界区间且 LLM 已启用时）
+  // 5. 条件触发 LLM 评分（仅在边界区间且 LLM 已启用时）
   if (scorer && config.llmScoring?.enabled) {
     if (isNearBoundary(ruleScore.calibrated, config.thresholds)) {
       try {
@@ -116,12 +117,15 @@ export async function route(
     }
   }
 
-  // 4. 返回规则评分结果
+  // 6. 返回规则评分结果
   return finalize(ruleScore, config, message, t0, scorer, semanticTaskType || undefined);
 }
 
 /**
  * 仅评分（不解析模型）。用于测试/调试。
+ *
+ * 注意：此函数为同步 API，不包含 Semantic Routing 逻辑。
+ * 若需与 route() 完全一致的评分，请直接调用 route()。
  */
 export function scoreOnly(
   message: string,
@@ -171,46 +175,23 @@ function mergeScores(
 
 // ── 内部工具 ────────────────────────────────────────────────────────────────
 
-/**
- * Sigmoid 校准：将原始加权和映射到 0–1 范围。
- * 参数经网格搜索优化（k=8, midpoint=0.18）。
- * S 曲线在中间区间提供更好的 tier 分辨力。
- */
-export function calibrate(x: number): number {
-  return 1 / (1 + Math.exp(-8 * (x - 0.18)));
-}
+// 注意：calibrate / scoreToTier 已提取到 math-utils.ts，此处通过顶部 import 引用。
 
-/** 将 calibrated 分数映射到 tier。 */
-export function scoreToTier(
-  score: number,
-  thresholds: [number, number, number, number] = DEFAULT_THRESHOLDS,
-): Tier {
-  if (score < thresholds[0]) return Tier.TRIVIAL;
-  if (score < thresholds[1]) return Tier.SIMPLE;
-  if (score < thresholds[2]) return Tier.MODERATE;
-  if (score < thresholds[3]) return Tier.COMPLEX;
-  return Tier.EXPERT;
-}
+/** 零分维度数组（模块级常量，避免每次创建）。 */
+const ZERO_DIMENSIONS = Object.values(Dimension).map(dim => ({
+  dimension: dim,
+  raw: 0,
+  weight: DEFAULT_WEIGHTS[dim],
+  weighted: 0,
+}));
 
 /** 为覆盖规则构建合成 ScoreResult。 */
 function buildOverrideScore(tier: Tier, rule: string): ScoreResult {
-  const dimensions = Object.values(Dimension).map(dim => ({
-    dimension: dim,
-    raw: 0,
-    weight: DEFAULT_WEIGHTS[dim],
-    weighted: 0,
-  }));
-  let calibrated = 0;
-  if (tier === Tier.TRIVIAL) calibrated = 0.05;
-  if (tier === Tier.SIMPLE) calibrated = 0.25;
-  if (tier === Tier.MODERATE) calibrated = 0.45;
-  if (tier === Tier.COMPLEX) calibrated = 0.65;
-  if (tier === Tier.EXPERT) calibrated = 0.95;
-
+  const cal = TIER_CALIBRATED_SCORES[tier];
   return {
-    dimensions,
-    rawSum: calibrated,
-    calibrated,
+    dimensions: ZERO_DIMENSIONS.map(d => ({ ...d })),
+    rawSum: cal,
+    calibrated: cal,
     tier,
     overrideApplied: rule,
   };

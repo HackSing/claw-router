@@ -9,6 +9,7 @@
 import { Dimension, DEFAULT_WEIGHTS, type DimensionScore } from './types';
 import { KEYWORDS } from './keywords';
 import type { KeywordEntry } from './types';
+import { clamp, lerp } from './math-utils';
 
 // ── Public API ──────────────────────────────────────────────────────────────
 
@@ -272,10 +273,4 @@ function hasComplexitySignals(lower: string): boolean {
   return complexityPatterns.some(pattern => pattern.test(lower));
 }
 
-function lerp(x0: number, x1: number, y0: number, y1: number, x: number): number {
-  return y0 + ((x - x0) / (x1 - x0)) * (y1 - y0);
-}
-
-function clamp(v: number, min = 0, max = 1): number {
-  return Math.max(min, Math.min(max, v));
-}
+// clamp / lerp 已提取到 math-utils.ts，通过顶部 import 引用。

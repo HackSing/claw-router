@@ -9,6 +9,7 @@
  */
 
 import { Tier, type ScoreResult, type DimensionScore, Dimension, DEFAULT_WEIGHTS, type LlmScoringConfig, type TraitMatchResult } from './types';
+import { TIER_CALIBRATED_SCORES } from './math-utils';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -54,16 +55,7 @@ const ARBITRATION_PROMPT = `你是一个 AI 模型选择器。根据用户消息
 只输出JSON，不要其他内容：
 {"model":"model-id","reasoning":"一句话理由"}`;
 
-// ── Tier 分数映射 ──────────────────────────────────────────────────────────
-
-/** 将 Tier 转换为 calibrated 分数（用于融合时的数值表示） */
-const TIER_TO_SCORE: Record<Tier, number> = {
-  [Tier.TRIVIAL]: 0.08,
-  [Tier.SIMPLE]: 0.28,
-  [Tier.MODERATE]: 0.48,
-  [Tier.COMPLEX]: 0.65,
-  [Tier.EXPERT]: 0.88,
-};
+// Tier → 校准分数映射已统一至 math-utils.ts 的 TIER_CALIBRATED_SCORES。
 
 // ── LLM Scorer Implementation ─────────────────────────────────────────────
 
@@ -189,7 +181,7 @@ export class LlmScorer {
    * 将 LLM 分类结果转换为 ScoreResult 格式（用于融合）
    */
   convertToScoreResult(llmResult: LlmScoreResult): ScoreResult {
-    const calibrated = TIER_TO_SCORE[llmResult.tier] ?? 0.28;
+    const calibrated = TIER_CALIBRATED_SCORES[llmResult.tier] ?? 0.28;
 
     const dimensions: DimensionScore[] = Object.values(Dimension).map((dim) => ({
       dimension: dim as Dimension,
