@@ -1,0 +1,51 @@
+{
+  "plugins": {
+    "enabled": true,
+    "allow": ["claw-router"],
+    "entries": {
+      "claw-router": {
+        "enabled": true,
+        "config": {
+          "enableSemanticRouting": true,
+          "logging": true,
+          "models": [
+            {
+              "id": "openai/gpt-4o-mini",
+              "traits": [
+                "chat",
+                "translation",
+                "other",
+                "TRIVIAL",
+                "SIMPLE"
+              ]
+            },
+            {
+              "id": "google/gemini-pro",
+              "traits": [
+                "writing",
+                "research",
+                "MODERATE"
+              ]
+            },
+            {
+              "id": "anthropic/claude-3.5-sonnet",
+              "traits": [
+                "coding",
+                "math",
+                "analysis",
+                "COMPLEX",
+                "EXPERT"
+              ]
+            }
+          ],
+          "llmScoring": {
+            "enabled": false,
+            "model": "deepseek-ai/DeepSeek-V3",
+            "apiKey": "sk-your-api-key-here",
+            "baseUrl": "https://api.siliconflow.cn"
+          }
+        }
+      }
+    }
+  }
+}

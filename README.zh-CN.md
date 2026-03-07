@@ -16,6 +16,7 @@
 - **Trait 匹配路由**：声明每个模型擅长什么，路由器自动匹配
 - **纯规则模式**：本地计算，< 1ms，零 API 调用
 - **LLM 辅助模式**：Tier 边界精化 + 多模型冲突仲裁
+- **每轮重新路由**：会话级模型覆盖仅对单次请求有效，每次对话都会根据最新诉求自动重新路由
 
 ```
 用户: "你好"           → TRIVIAL  → doubao-seed-code    （快速、便宜）
@@ -38,36 +39,29 @@
               └───────┬────────┘
                       │ 无匹配
                       ▼
-     ┌────────────────────────────────────┐
-     │  8 维规则评分引擎 (< 1ms)          │ → Tier
-     └───────────────────┬────────────────┘
-                         │
-                         ▼
-     ┌────────────────────────────────────┐
-     │  任务分类器（关键词匹配）            │ → TaskType
-     └───────────────────┬────────────────┘
-                         │
-                         ▼
-     ┌────────────────────────────────────┐
-     │  Trait 匹配引擎                    │
-     │  traits = [Tier, TaskType]         │
-     │  对每个模型的 traits 评分           │
-     │  选择最高分模型                     │
-     └───────────────────┬────────────────┘
-                  ┌──────┴──────┐
-            唯一最高分    多个并列
-                  │              │
-                  │              ▼
-                  │    ┌──────────────────┐
-                  │    │ LLM 仲裁         │
-                  │    │（选择最优模型）    │
-                  │    └────────┬─────────┘
-                  │             │
-                  └──────┬──────┘
-                         ▼
-              ┌────────────────┐
-              │   最终模型      │
-              └────────────────┘
+            ┌────────────────────────────────────────┐
+            │  本地语义路由 (如开启，默认 true)         │
+            │  bge-small-zh-v1.5 · cosine similarity │
+            └────────────────────┬───────────────────┘
+                                 │ tier 提示 (或跳过)
+                                 ▼
+ ┌──────────────────────────┐  ┌────────────────────┐
+ │ 8维启发式规则引擎            │  │ 历史上下文感知        │
+ │ 分数计算 (<1ms) → Tier       │  │ 多轮历史复杂度提权      │
+ └────────────┬─────────────┘  └────────┬───────────┘
+              └─────────────────────────┘
+                                 ▼ │ (临界点 LLM 仲裁精化)
+                                 │
+ ┌──────────────────────────┐  ┌────────────────────┐
+ │ 任务分类器                   │  │ Trait 匹配引擎       │
+ │ 关键词匹配 → TaskType        │  │ 打分 + 模型选择       │
+ └────────────┬─────────────┘  └────────┬───────────┘
+              └─────────────────────────┘
+                                 │ (并列 → LLM 仲裁唯一)
+                                 ▼
+                        ┌────────────┐
+                        │ 最终派发模型   │
+                        └────────────┘
 ```
 
 ---
@@ -129,6 +123,8 @@ cp -r . ~/.openclaw/extensions/claw-router
   }
 }
 ```
+
+> 💡 **不想手写配置？** 请查看代码库中的 [`examples/openclaw-config-example.json`](./examples/openclaw-config-example.json) 样板文件，直接复制粘贴到你的主配置即可。
 
 ### 2. 配置模型
 
@@ -219,7 +215,7 @@ await rpc('route.stats');
 | `thresholds` | `[n, n, n, n]` | `[0.20, 0.42, 0.58, 0.78]` | Tier 分界阈值 |
 | `scoring.weights` | `Record<Dimension, number>` | 见下表 | 覆盖维度权重 |
 | `logging` | `boolean` | `false` | 启用详细路由日志 |
-| `enableSemanticRouting` | `boolean` | `false` | 启用基于本地嵌入模型的语义路由 |
+| `enableSemanticRouting` | `boolean` | `true` | 启用本地 embedding 语义路由（bge-small-zh-v1.5）。首次启动自动下载极小模型，后续冷启动读磁盘 anchor 缓存。设为 `false` 可禁用 |
 | `llmScoring.enabled` | `boolean` | `false` | 启用 LLM 辅助评分与仲裁 |
 | `llmScoring.model` | `string` | — | LLM 评分/仲裁模型 |
 | `llmScoring.apiKey` | `string` | — | LLM API Key |
@@ -290,6 +286,60 @@ cd claw-router
 npm install
 npm test
 ```
+
+### 项目结构
+
+```
+claw-router/
+├── index.ts                    # 插件入口
+├── openclaw.plugin.json        # 插件清单 & 配置 Schema
+├── src/
+│   ├── router/
+│   │   ├── engine.ts             # 路由主流程
+│   │   ├── semantic.ts           # 语义路由（本地嵌入 + anchor 缓存）
+│   │   ├── context.ts            # 历史上下文感知
+│   │   ├── math-utils.ts         # 共享数学工具
+│   │   ├── semantic-signals.ts   # 语义信号提取
+│   │   ├── model-matcher.ts      # Trait 匹配引擎
+│   │   ├── task-classifier.ts    # 任务分类器
+│   │   ├── scorer.ts             # 8 维度评分
+│   │   ├── llm-scorer.ts         # LLM 仲裁
+│   │   └── types.ts              # 全局类型
+│   ├── config.ts               # 配置解析
+│   └── logger.ts               # 决策日志
+├── test/
+│   ├── extended-data.test.ts   # 业务边界极端用例
+│   └── *.test.ts               # 单元集成测试
+├── examples/                   # 使用示例 & 配置模板
+└── skills/
+    └── claw-router/SKILL.md
+```
+
+---
+
+## 演进 Roadmap
+
+详细开发计划见 [ROADMAP.md](./ROADMAP.md)。
+
+### 最新更新 ✅
+
+**v2.0.1 (Released)**
+- ✅ 打破循环依赖，抽取公共数学组件，提高类型安全
+- ✅ LRU 缓存修正与跨平台路径修复
+- ✅ Anchor 特征向量磁盘缓存机制（大幅加速冷启动）
+- ✅ 162 全量测试用例（覆盖极短报错、注入攻击等生产环境边角 case）
+
+**v2.0.0 (Released)**
+- ✅ Trait-based 路由机制落地（声明模型擅长点，系统全自动算分派单）
+- ✅ 本地大模型语义路由 (Semantic Routing)
+- ✅ 多轮历史上下文提权补偿 (Context-Awareness)
+- ✅ LLM 多模型冲突仲裁
+- ✅ 增加数学与研究任务分类：+math, +research
+
+### 构建中 🚀
+
+- **Learning & Feedback** — 自动记忆你的路由修正建议，纠正未来的特征派发
+- **Route Decision Visualization** — 提供精美 Web UI（雷达图、路由趋势图）
 
 ---
 
