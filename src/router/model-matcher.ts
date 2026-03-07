@@ -2,11 +2,13 @@
  * @aiwaretop/claw-router — Model Matcher
  *
  * Trait 匹配引擎：从消息特征中提取 traits，与模型声明的 traits 做匹配。
+ * 使用加权匹配：Tier 权重 0.6，TaskType 权重 0.4。
+ * Tier 支持邻近部分匹配（距离越近得分越高）。
  *
  * 流程：extractTraits() → scoreModels() → selectModel()
  */
 
-import { Tier, TaskType, type ModelProfile, type TraitMatchResult } from './types';
+import { Tier, TIER_ORDER, TaskType, type ModelProfile, type TraitMatchResult } from './types';
 
 // ── 特征提取 ────────────────────────────────────────────────────────────────
 
@@ -22,15 +24,52 @@ export function extractTraits(tier: Tier, taskType: TaskType): string[] {
     return traits;
 }
 
+// ── Tier 邻近匹配 ───────────────────────────────────────────────────────────
+
+/** Tier 之间的距离索引 */
+const TIER_INDEX: Record<string, number> = {};
+for (let i = 0; i < TIER_ORDER.length; i++) {
+    TIER_INDEX[TIER_ORDER[i].toLowerCase()] = i;
+}
+
+/** Tier 邻近得分：精确匹配 1.0，相邻 0.5，隔一 0.2，其他 0 */
+const TIER_PROXIMITY: number[] = [1.0, 0.5, 0.2, 0.0, 0.0];
+
+/**
+ * 计算 Tier 匹配分数（支持邻近部分匹配）。
+ * 精确匹配 = 1.0，相邻 = 0.5，隔一 = 0.2，更远 = 0。
+ */
+function tierMatchScore(messageTier: string, modelTiers: string[]): number {
+    const msgIdx = TIER_INDEX[messageTier];
+    if (msgIdx === undefined) return 0;
+
+    let best = 0;
+    for (const t of modelTiers) {
+        const idx = TIER_INDEX[t];
+        if (idx === undefined) continue;
+        const dist = Math.abs(msgIdx - idx);
+        const score = TIER_PROXIMITY[dist] ?? 0;
+        if (score > best) best = score;
+    }
+    return best;
+}
+
+// ── Trait 权重 ──────────────────────────────────────────────────────────────
+
+/** Tier 匹配在总分中占比 */
+const TIER_WEIGHT = 0.6;
+/** TaskType 匹配在总分中占比 */
+const TASK_WEIGHT = 0.4;
+
 // ── 模型评分 ────────────────────────────────────────────────────────────────
 
 /**
  * 对所有模型计算 trait 匹配得分。
  *
- * 评分策略：
- * - matchedTraits = model.traits ∩ messageTraits
- * - score = matchedTraits.length / messageTraits.length
- * - 按 score 降序排列
+ * 评分策略（加权匹配）：
+ * - Tier 匹配（权重 0.6）：支持邻近部分得分
+ * - TaskType 匹配（权重 0.4）：精确匹配
+ * - score = tierScore × 0.6 + taskTypeScore × 0.4
  *
  * @returns 按分数降序排列的候选列表
  */
@@ -39,18 +78,50 @@ export function scoreModels(messageTraits: string[], models: ModelProfile[]): Tr
         return [];
     }
 
-    // 归一化比较：trait 匹配不区分大小写
+    // 分离 Tier 和 TaskType
     const normalizedTraits = messageTraits.map(t => t.toLowerCase());
+    const tierValues = new Set(TIER_ORDER.map(t => t.toLowerCase()));
+    const msgTier = normalizedTraits.find(t => tierValues.has(t));
+    const msgTaskTypes = normalizedTraits.filter(t => !tierValues.has(t));
 
     const results: TraitMatchResult[] = models.map(model => {
         const normalizedModelTraits = model.traits.map(t => t.toLowerCase());
-        const matchedTraits = normalizedTraits.filter(t => normalizedModelTraits.includes(t));
+        const modelTiers = normalizedModelTraits.filter(t => tierValues.has(t));
+        const modelTaskTypes = normalizedModelTraits.filter(t => !tierValues.has(t));
 
-        return {
-            model,
-            score: matchedTraits.length / normalizedTraits.length,
-            matchedTraits,
-        };
+        // Tier 维度得分（邻近匹配）
+        const tierScore = msgTier ? tierMatchScore(msgTier, modelTiers) : 0;
+
+        // TaskType 维度得分（精确匹配）
+        let taskScore = 0;
+        const matchedTaskTypes: string[] = [];
+        for (const mt of msgTaskTypes) {
+            if (modelTaskTypes.includes(mt)) {
+                taskScore = 1.0;
+                matchedTaskTypes.push(mt);
+            }
+        }
+
+        // 加权总分
+        const hasTier = msgTier !== undefined;
+        const hasTask = msgTaskTypes.length > 0;
+        let score: number;
+        if (hasTier && hasTask) {
+            score = tierScore * TIER_WEIGHT + taskScore * TASK_WEIGHT;
+        } else if (hasTier) {
+            score = tierScore;
+        } else if (hasTask) {
+            score = taskScore;
+        } else {
+            score = 0;
+        }
+
+        // 收集匹配的 traits
+        const matchedTraits: string[] = [];
+        if (msgTier && tierScore > 0) matchedTraits.push(msgTier);
+        matchedTraits.push(...matchedTaskTypes);
+
+        return { model, score, matchedTraits };
     });
 
     // 按分数降序，同分时按 traits 数量少的优先（更专精的模型优先）

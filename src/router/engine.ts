@@ -15,32 +15,7 @@ import { checkOverrides } from './overrides';
 import { scoreDimensions } from './scorer';
 import { classifyTask } from './task-classifier';
 import { extractTraits, scoreModels, selectModel } from './model-matcher';
-import { LlmScorer } from './llm-scorer';
-
-// ── LLM Scorer Instance ───────────────────────────────────────────────────
-
-let llmScorer: LlmScorer | null = null;
-
-/**
- * 初始化 LLM 评分器
- */
-export function initLlmScorer(
-  config: { enabled: boolean;[key: string]: any },
-  invokeLLM: (model: string, prompt: string) => Promise<string>
-): void {
-  if (config.enabled) {
-    llmScorer = new LlmScorer(config, invokeLLM);
-  } else {
-    llmScorer = null;
-  }
-}
-
-/**
- * 获取当前 LLM 评分器实例
- */
-export function getLlmScorer(): LlmScorer | null {
-  return llmScorer;
-}
+import type { LlmScorer } from './llm-scorer';
 
 // ── 边界检测 ────────────────────────────────────────────────────────────────
 
@@ -70,12 +45,13 @@ export function isNearBoundary(
  */
 export async function route(message: string, config: ResolvedConfig): Promise<RouteDecision> {
   const t0 = performance.now();
+  const scorer = config.llmScorerInstance ?? null;
 
   // 1. 硬规则覆盖（始终优先）
   const override = checkOverrides(message);
   if (override) {
     const score = buildOverrideScore(override.tier, override.rule);
-    return finalize(score, config, message, t0);
+    return finalize(score, config, message, t0, scorer);
   }
 
   // 2. 8 维度规则评分（本地，< 1ms）
@@ -87,14 +63,14 @@ export async function route(message: string, config: ResolvedConfig): Promise<Ro
   const ruleScore: ScoreResult = { dimensions, rawSum, calibrated, tier: ruleTier };
 
   // 3. 条件触发 LLM 评分（仅在边界区间且 LLM 已启用时）
-  if (llmScorer && config.llmScoring?.enabled) {
+  if (scorer && config.llmScoring?.enabled) {
     if (isNearBoundary(calibrated, config.thresholds)) {
       try {
-        const llmResult = await llmScorer.evaluate(message);
+        const llmResult = await scorer.evaluate(message);
         if (llmResult) {
-          const llmScore = llmScorer.convertToScoreResult(llmResult);
+          const llmScore = scorer.convertToScoreResult(llmResult);
           const merged = mergeScores(ruleScore, llmScore, llmResult.confidence);
-          return finalize(merged, config, message, t0);
+          return finalize(merged, config, message, t0, scorer);
         }
       } catch (error) {
         console.error('[claw-router] LLM 评估错误，回退到规则结果:', error);
@@ -103,7 +79,7 @@ export async function route(message: string, config: ResolvedConfig): Promise<Ro
   }
 
   // 4. 返回规则评分结果
-  return finalize(ruleScore, config, message, t0);
+  return finalize(ruleScore, config, message, t0, scorer);
 }
 
 /**
@@ -200,6 +176,7 @@ async function finalize(
   config: ResolvedConfig,
   message: string,
   t0: number,
+  scorer: LlmScorer | null = null,
 ): Promise<RouteDecision> {
   const taskType = classifyTask(message);
 
@@ -212,9 +189,9 @@ async function finalize(
   let matchSource: MatchSource = 'trait';
 
   // 如果多候选并列且 LLM 可用，触发仲裁
-  if (selection.needsArbitration && llmScorer && config.llmScoring?.enabled) {
+  if (selection.needsArbitration && scorer && config.llmScoring?.enabled) {
     try {
-      const arbitrationResult = await llmScorer.arbitrate(message, selection.tiedCandidates);
+      const arbitrationResult = await scorer.arbitrate(message, selection.tiedCandidates);
       if (arbitrationResult) {
         modelId = arbitrationResult.model;
         matchSource = 'llm_arbitration';

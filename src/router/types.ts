@@ -163,6 +163,8 @@ export interface KeywordEntry {
   weight: number;
   /** 为 true 时 pattern 作为 RegExp 处理。 */
   isRegex?: boolean;
+  /** 预编译的正则对象（isRegex=true 时自动填充）。 */
+  compiledRegex?: RegExp;
 }
 
 /** 按维度组织的关键词表。 */

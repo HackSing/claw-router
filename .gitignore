@@ -1,3 +1,8 @@
 node_modules/
 package-lock.json
 configs/env.sh
+
+# TypeScript 编译产物
+*.js
+!.eslintrc.js
+dist/

@@ -94,8 +94,16 @@ describe('Overrides — hard rules', () => {
     assert.equal(r, null);
   });
 
-  it('3+ code fences → COMPLEX', () => {
+  it('短代码围栏不触发 COMPLEX（代码量不足）', () => {
     const msg = '```a\n```\n```b\n```';
+    const r = checkOverrides(msg);
+    // 4 个围栏但代码量 < 10 行，不强制 COMPLEX
+    assert.equal(r, null);
+  });
+
+  it('多代码围栏 + 足量代码 → COMPLEX', () => {
+    const lines = Array.from({ length: 12 }, (_, i) => `  const x${i} = ${i};`).join('\n');
+    const msg = '```js\n' + lines + '\n```\n```ts\nconst y = 1;\n```';
     const r = checkOverrides(msg);
     assert.ok(r !== null);
     assert.equal(r!.tier, Tier.COMPLEX);

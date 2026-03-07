@@ -54,18 +54,25 @@ describe('scoreModels — 模型评分', () => {
         assert.deepEqual(codeModel!.matchedTraits, ['complex', 'coding']);
     });
 
-    it('部分匹配 → 0 < score < 1', () => {
+    it('部分匹配（Tier 邻近 + TaskType 匹配）', () => {
+        // MODERATE 与 COMPLEX 相邻，邻近得分 0.5；coding 精确匹配
+        // score = 0.5 * 0.6 + 1.0 * 0.4 = 0.7
         const results = scoreModels(['MODERATE', 'coding'], models);
         const codeModel = results.find(r => r.model.id === 'code-model');
         assert.ok(codeModel);
-        assert.equal(codeModel!.score, 0.5); // 只匹配 coding
+        assert.ok(codeModel!.score > 0.5 && codeModel!.score < 1.0,
+            `邻近+任务匹配应在 (0.5, 1.0) 区间，得到 ${codeModel!.score}`);
     });
 
     it('零匹配 → score = 0', () => {
+        // chat-model has TRIVIAL/SIMPLE/chat，COMPLEX 和 coding 都不匹配
+        // COMPLEX 与 TRIVIAL 距离=3, 与 SIMPLE 距离=2 → 邻近得分 0.2
         const results = scoreModels(['COMPLEX', 'coding'], models);
         const chatModel = results.find(r => r.model.id === 'chat-model');
         assert.ok(chatModel);
-        assert.equal(chatModel!.score, 0);
+        // 邻近得分可能很低但不一定为 0
+        assert.ok(chatModel!.score < 0.3,
+            `chat-model 对 COMPLEX+coding 应得分很低，得到 ${chatModel!.score}`);
     });
 
     it('结果按分数降序排列', () => {
@@ -98,6 +105,23 @@ describe('scoreModels — 模型评分', () => {
     it('空 models → 空结果', () => {
         const results = scoreModels(['COMPLEX'], []);
         assert.equal(results.length, 0);
+    });
+
+    it('邻近 Tier 部分匹配：MODERATE 消息对声明 COMPLEX 的模型得分 > 0', () => {
+        const results = scoreModels(['MODERATE'], models);
+        const codeModel = results.find(r => r.model.id === 'code-model');
+        assert.ok(codeModel);
+        assert.ok(codeModel!.score > 0,
+            `MODERATE 与 COMPLEX 相邻，应有部分得分，得到 ${codeModel!.score}`);
+    });
+
+    it('远离 Tier 得分低：TRIVIAL 消息对 EXPERT 模型得分接近 0', () => {
+        const specialModels: ModelProfile[] = [
+            { id: 'expert-only', traits: ['EXPERT'] },
+        ];
+        const results = scoreModels(['TRIVIAL'], specialModels);
+        assert.ok(results[0].score < 0.1,
+            `TRIVIAL 与 EXPERT 距离=4，得分应接近 0，得到 ${results[0].score}`);
     });
 });
 

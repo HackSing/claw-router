@@ -11,108 +11,21 @@
  *   • Gateway RPC:    route.decide, route.stats
  */
 
-import { route, initLlmScorer } from './src/router/engine';
+import { route } from './src/router/engine';
+import { LlmScorer } from './src/router/llm-scorer';
 import { resolveConfig, type ResolvedConfig } from './src/config';
 import { logDecision } from './src/logger';
 import { Tier, type RouterConfig, type RouterStats, type RouteDecision } from './src/router/types';
+import { createStats, trackDecision } from './src/stats';
+import { applyModelToSession, parseAgentId } from './src/session';
 import * as fs from 'node:fs';
 import * as path from 'node:path';
 
 // ── Runtime state ───────────────────────────────────────────────────────────
 
 let pluginConfig: ResolvedConfig;
+const stats = createStats();
 
-const stats: RouterStats = {
-  totalRouted: 0,
-  tierCounts: {
-    [Tier.TRIVIAL]: 0,
-    [Tier.SIMPLE]: 0,
-    [Tier.MODERATE]: 0,
-    [Tier.COMPLEX]: 0,
-    [Tier.EXPERT]: 0,
-  },
-  avgLatencyMs: 0,
-  overrideCount: 0,
-};
-
-function trackDecision(d: RouteDecision) {
-  stats.totalRouted++;
-  stats.tierCounts[d.tier]++;
-  if (d.score.overrideApplied) stats.overrideCount++;
-  stats.avgLatencyMs =
-    stats.avgLatencyMs + (d.latencyMs - stats.avgLatencyMs) / stats.totalRouted;
-}
-
-/**
- * Parse "provider/model" string into { provider, model }.
- */
-function parseModelRef(ref: string): { provider: string; model: string } {
-  const idx = ref.indexOf('/');
-  if (idx === -1) return { provider: '', model: ref };
-  return { provider: ref.slice(0, idx), model: ref.slice(idx + 1) };
-}
-
-/**
- * Parse agentId from sessionKey.
- * sessionKey format: "agent:<agentId>:<sessionId>"
- */
-function parseAgentId(sessionKey: string): string {
-  const parts = sessionKey.split(':');
-  if (parts.length >= 2 && parts[0] === 'agent') {
-    return parts[1];
-  }
-  return 'main';
-}
-
-/**
- * Directly update session store to set model override.
- * Reads/writes ~/.openclaw/agents/<agentId>/sessions/sessions.json.
- */
-function applyModelToSession(
-  sessionKey: string,
-  modelRef: string,
-  log: { info: (m: string) => void; warn?: (m: string) => void },
-): boolean {
-  try {
-    const agentId = parseAgentId(sessionKey);
-    const storePath = path.join(
-      process.env.HOME || '/home/ubuntu',
-      '.openclaw', 'agents', agentId, 'sessions', 'sessions.json',
-    );
-
-    if (!fs.existsSync(storePath)) {
-      log.warn?.(`[claw-router] Session store not found: ${storePath}`);
-      return false;
-    }
-
-    const raw = fs.readFileSync(storePath, 'utf-8');
-    const store = JSON.parse(raw);
-    const entry = store[sessionKey];
-
-    if (!entry) {
-      log.warn?.(`[claw-router] Session not found: ${sessionKey}`);
-      return false;
-    }
-
-    const { provider, model } = parseModelRef(modelRef);
-    if (!provider || !model) return false;
-
-    // Check if already set to the desired model
-    if (entry.modelOverride === model && entry.providerOverride === provider) {
-      return false; // no change needed
-    }
-
-    entry.modelOverride = model;
-    entry.providerOverride = provider;
-    entry.updatedAt = Date.now();
-
-    fs.writeFileSync(storePath, JSON.stringify(store, null, 2));
-    return true;
-  } catch (err) {
-    log.warn?.(`[claw-router] Failed to apply model override: ${err}`);
-    return false;
-  }
-}
 
 // ── Plugin export ───────────────────────────────────────────────────────────
 
@@ -178,7 +91,7 @@ const clawRouterPlugin = {
           }
         };
 
-        initLlmScorer(llmConfig, invokeLLM);
+        pluginConfig.llmScorerInstance = new LlmScorer(llmConfig, invokeLLM);
         api.logger.info(`[claw-router] LLM 评分已启用: model=${model}`);
       }
     }
@@ -218,7 +131,7 @@ const clawRouterPlugin = {
 
       // Run the router
       const decision = await route(userMessage, pluginConfig);
-      trackDecision(decision);
+      trackDecision(stats, decision);
       logDecision(decision, pluginConfig.logging, log);
 
       const targetModel = decision.model;
@@ -257,15 +170,8 @@ const clawRouterPlugin = {
       },
       ctx: { sessionKey?: string; agentId?: string },
     ) => {
-      console.log(`[claw-router DEBUG] agent_end hook triggered, tokenUsage:`, event.tokenUsage);
-      if (!pluginConfig.logging) {
-        console.log(`[claw-router DEBUG] logging disabled, skipping`);
-        return;
-      }
-      if (!event.tokenUsage) {
-        console.log(`[claw-router DEBUG] no tokenUsage, skipping`);
-        return;
-      }
+      if (!pluginConfig.logging) return;
+      if (!event.tokenUsage) return;
 
       // Read session store to get actual model used
       let modelDisplay = 'unknown';
@@ -286,14 +192,13 @@ const clawRouterPlugin = {
               modelDisplay = `${provider}/${model}`;
             }
           }
-        } catch (err) {
-          console.log(`[claw-router DEBUG] Failed to read model from session: ${err}`);
+        } catch (_err) {
+          // 读取失败时静默降级
         }
       }
 
       const { input, output, total } = event.tokenUsage;
       const msg = `[claw-router] Tokens: ${input} in / ${output} out (total: ${total ?? input + output}, duration: ${event.durationMs ?? 0}ms, model: ${modelDisplay})`;
-      console.log(msg);
       log.info(msg);
     });
 
@@ -317,7 +222,7 @@ const clawRouterPlugin = {
       },
       async execute(_id: string, params: { message: string }) {
         const decision = await route(params.message, pluginConfig);
-        trackDecision(decision);
+        trackDecision(stats, decision);
         logDecision(decision, pluginConfig.logging, log);
         return {
           content: [{
@@ -465,7 +370,7 @@ const clawRouterPlugin = {
         return;
       }
       const decision = await route(message, pluginConfig);
-      trackDecision(decision);
+      trackDecision(stats, decision);
       logDecision(decision, pluginConfig.logging, log);
       respond(true, decision);
     });

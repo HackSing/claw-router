@@ -93,7 +93,7 @@ function scoreKeywords(lowerMsg: string, entries: KeywordEntry[]): number {
 
   for (const entry of entries) {
     const matched = entry.isRegex
-      ? new RegExp(entry.pattern, 'i').test(lowerMsg)
+      ? (entry.compiledRegex ?? new RegExp(entry.pattern, 'i')).test(lowerMsg)
       : lowerMsg.includes(entry.pattern.toLowerCase());
 
     if (matched) {
@@ -221,10 +221,10 @@ function scoreCreativeRequest(lower: string): number {
  */
 function scoreLength(message: string): number {
   const len = message.length;
-  if (len <= 10)   return lerp(0, 10, 0.00, 0.05, len);
-  if (len <= 50)   return lerp(10, 50, 0.05, 0.25, len);
-  if (len <= 150)  return lerp(50, 150, 0.25, 0.50, len);
-  if (len <= 500)  return lerp(150, 500, 0.50, 0.75, len);
+  if (len <= 10) return lerp(0, 10, 0.00, 0.05, len);
+  if (len <= 50) return lerp(10, 50, 0.05, 0.25, len);
+  if (len <= 150) return lerp(50, 150, 0.25, 0.50, len);
+  if (len <= 500) return lerp(150, 500, 0.50, 0.75, len);
   if (len <= 2000) return lerp(500, 2000, 0.75, 0.90, len);
   return 0.90 + 0.10 * (1 - Math.exp(-(len - 2000) / 3000));
 }
@@ -249,7 +249,7 @@ function isCodeContext(lower: string): boolean {
     // 文件格式
     /\.(?:py|js|ts|jsx|tsx|java|go|sql|css|html|json|yaml|xml)$/
   ];
-  
+
   return codePatterns.some(pattern => pattern.test(lower));
 }
 
@@ -268,7 +268,7 @@ function hasComplexitySignals(lower: string): boolean {
     // 复杂流程
     /首先.*?然后.*?接着.*?最后/
   ];
-  
+
   return complexityPatterns.some(pattern => pattern.test(lower));
 }
 

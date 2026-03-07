@@ -25,12 +25,19 @@ export function checkOverrides(message: string): OverrideResult | null {
     return { tier: Tier.TRIVIAL, rule: 'short_nontechnical (≤5 chars)' };
   }
 
-  // ── Rule 2: 3+ code fences → COMPLEX ─────────────────────────────────
+  // ── Rule 2: 3+ code fences → COMPLEX（需满足代码量条件）────────────
   const fenceCount = (message.match(/```/g) || []).length;
-  // each code block has opening + closing = 2 fences, but unclosed blocks count too
-  // we count the raw ``` occurrences; 3+ means at least one and a half blocks
   if (fenceCount >= 3) {
-    return { tier: Tier.COMPLEX, rule: 'multiple_code_blocks (≥3 fences)' };
+    // 统计围栏内代码行数，排除简单配置粘贴
+    const codeBlocks = message.match(/```[\s\S]*?```/g) || [];
+    const totalCodeLines = codeBlocks.reduce((sum, block) => {
+      const lines = block.split('\n').length - 2; // 减去开头和结尾的 ```
+      return sum + Math.max(0, lines);
+    }, 0);
+    // 6+ 围栏（3+ 代码块）或代码量 >= 10 行时强制 COMPLEX
+    if (fenceCount >= 6 || totalCodeLines >= 10) {
+      return { tier: Tier.COMPLEX, rule: 'multiple_code_blocks (≥3 fences, substantial code)' };
+    }
   }
 
   // ── Rule 3: Architecture / system-design keywords → EXPERT ────────────
