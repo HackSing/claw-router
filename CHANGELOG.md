@@ -2,7 +2,42 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.1] - 2026-03-07
+
+### 🔧 Code Quality & Refactoring
+
+#### 架构
+- **打破循环依赖**：将 `calibrate`、`scoreToTier`、`clamp`、`lerp` 提取到新增的 `math-utils.ts`，消除了 `context.ts ↔ engine.ts` 的双向循环导入
+- **统一 Tier→Score 映射**：新增 `TIER_CALIBRATED_SCORES` 常量作为全局唯一数据源，移除 `engine.ts` 和 `llm-scorer.ts` 中各自维护的独立映射（原本数值还不一致）
+- **`ResolvedConfig` 集中化**：将接口从 `config.ts` 迁移至 `types.ts`，`config.ts` 改为重新导出，`engine.ts` 直接从 `types.ts` 导入
+
+#### 类型安全
+- **`semantic.ts` 消除 `any`**：定义 `Extractor` 接口替代 `any`，删除全部 `@ts-ignore` 注释，通过 try-catch 安全设置 ONNX WASM 线程数
+
+#### 性能
+- **Anchor 向量磁盘缓存**（`semantic.ts`）：首次推理后将 anchor 向量序列化至 `~/.claw-router/anchor-cache.json`，后续冷启动直接读取跳过模型推理；通过 MD5 哈希检测 phrases 变化自动失效重建
+- **`ZERO_DIMENSIONS` 模块级常量**：`buildOverrideScore` 不再每次调用时重建零维度数组
+
+#### Bug 修复
+- **修复伪 LRU**（`cache.ts`）：`get()` 命中时执行 touch（删除再插入），将 FIFO 淘汰策略修正为真正的 LRU
+- **修复跨平台路径**（`session.ts`）：用 `os.homedir()` 替换硬编码的 `process.env.HOME || '/home/ubuntu'`，兼容 Windows
+
+#### 代码风格
+- `engine.ts` 步骤注释编号统一为 1→2→3→4→5→6，删除重复的"Phase 1"标注
+- `task-classifier.ts` 注释中旧名称 `GENERAL` 更新为 `OTHER`
+- `scoreOnly()` 添加 JSDoc 说明其不包含 Semantic Routing 的局限性
+
+#### 工程卫生
+- 删除根目录 6 个临时调试产物：`test-issue.ts`、`test-debug.ts`、`test-semantic.ts`、`out.log`、`test.log`、`stash-test.log`
+- `.gitignore` 补充 `*.log` 和 `/test-*.ts` 规则
+
+### Tests
+- 162 测试用例，21+ 套件（新增 11 个真实业务极端用例覆盖 Kubernetes 排查、SQL 注入、数学证明、Prompt 注入等）
+
+---
+
 ## [2.0.0] - 2026-03-07
+
 
 ### ⚠️ Breaking Changes
 - **Configuration format changed**: `tiers` and `taskRouting` replaced by `models` array
