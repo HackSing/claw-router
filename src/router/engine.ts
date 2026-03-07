@@ -15,6 +15,7 @@ import { checkOverrides } from './overrides';
 import { scoreDimensions } from './scorer';
 import { classifyTask } from './task-classifier';
 import { extractTraits, scoreModels, selectModel } from './model-matcher';
+import { extractSemanticSignals } from './semantic-signals';
 import type { LlmScorer } from './llm-scorer';
 
 // ── 边界检测 ────────────────────────────────────────────────────────────────
@@ -179,9 +180,10 @@ async function finalize(
   scorer: LlmScorer | null = null,
 ): Promise<RouteDecision> {
   const taskType = classifyTask(message);
+  const adjustedScore = applyTechnicalReviewFloor(score, taskType, message, config.thresholds);
 
   // trait 匹配
-  const traits = extractTraits(score.tier, taskType);
+  const traits = extractTraits(adjustedScore.tier, taskType);
   const candidates = scoreModels(traits, config.models);
   const selection = selectModel(candidates);
 
@@ -207,12 +209,37 @@ async function finalize(
   }
 
   return {
-    tier: score.tier,
+    tier: adjustedScore.tier,
     taskType,
     model: modelId,
-    score,
+    score: adjustedScore,
     latencyMs: parseFloat((performance.now() - t0).toFixed(3)),
     matchSource,
     candidates: candidates.slice(0, 3),  // 只保留 top 3 用于日志
+  };
+}
+
+function applyTechnicalReviewFloor(
+  score: ScoreResult,
+  taskType: TaskType,
+  message: string,
+  thresholds: [number, number, number, number] = DEFAULT_THRESHOLDS,
+): ScoreResult {
+  const signals = extractSemanticSignals(message);
+  const isTechnicalReview = signals.reviewIntent >= 0.45 && signals.techContext >= 0.35;
+  const currentTier = scoreToTier(score.calibrated, thresholds);
+
+  if (!isTechnicalReview) return score;
+  if (taskType !== TaskType.CODING && taskType !== TaskType.ANALYSIS && taskType !== TaskType.OTHER) return score;
+  if (currentTier === Tier.MODERATE || currentTier === Tier.COMPLEX || currentTier === Tier.EXPERT) return score;
+
+  const floorScore = thresholds[1] + 0.01;
+  return {
+    ...score,
+    calibrated: Math.max(score.calibrated, floorScore),
+    tier: scoreToTier(Math.max(score.calibrated, floorScore), thresholds),
+    overrideApplied: score.overrideApplied
+      ? `${score.overrideApplied}+technical_review_floor`
+      : 'technical_review_floor',
   };
 }
