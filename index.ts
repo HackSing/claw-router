@@ -110,6 +110,118 @@ function extractOriginalUserMessage(event: { prompt?: string; messages?: unknown
   return stripInjectedContext(event.prompt ?? '');
 }
 
+type ScoringSourceKind =
+  | '真实用户消息'
+  | '系统启动提示'
+  | '会话包装上下文'
+  | '历史消息拼接'
+  | '未知';
+
+type ScoringSourcePart = {
+  kind: ScoringSourceKind;
+  text: string;
+};
+
+type ScoringSourceDebug = {
+  effectiveText: string;
+  effectiveKind: ScoringSourceKind;
+  parts: ScoringSourcePart[];
+  promptPreview: string;
+  messagePreview: string;
+};
+
+function normalizeWhitespace(text: string): string {
+  return text.replace(/\s+/g, ' ').trim();
+}
+
+function truncatePreview(text: string, max = 160): string {
+  const normalized = normalizeWhitespace(text);
+  if (!normalized) return '';
+  return normalized.length <= max ? normalized : `${normalized.slice(0, max)}…`;
+}
+
+function uniqueParts(parts: ScoringSourcePart[]): ScoringSourcePart[] {
+  const seen = new Set<string>();
+  const result: ScoringSourcePart[] = [];
+  for (const part of parts) {
+    const key = `${part.kind}::${normalizeWhitespace(part.text)}`;
+    if (!part.text.trim() || seen.has(key)) continue;
+    seen.add(key);
+    result.push({ kind: part.kind, text: part.text.trim() });
+  }
+  return result;
+}
+
+function inspectScoringSources(event: { prompt?: string; messages?: unknown[] }): ScoringSourceDebug {
+  const prompt = event.prompt ?? '';
+  const promptPreview = truncatePreview(prompt);
+  const messageText = extractUserMessageFromMessages(event.messages);
+  const messagePreview = truncatePreview(messageText);
+  const parts: ScoringSourcePart[] = [];
+
+  if (messageText.trim()) {
+    parts.push({ kind: '真实用户消息', text: messageText.trim() });
+  }
+
+  const startupPatterns = [
+    /A new session was started via \/new or \/reset/i,
+    /Execute your Session Startup sequence now/i,
+    /Then greet the user in your configured persona/i,
+  ];
+  const startupMatch = startupPatterns.some(pattern => pattern.test(prompt));
+  if (startupMatch) {
+    parts.push({ kind: '系统启动提示', text: prompt.trim() });
+  }
+
+  const wrapperPatterns = [
+    /Sender \(untrusted metadata\):/i,
+    /Conversation info \(untrusted metadata\):/i,
+    /```json/i,
+    /\[message_id:/i,
+    /\[Sat .*?GMT\+8\]/i,
+  ];
+  const wrapperMatch = wrapperPatterns.some(pattern => pattern.test(prompt));
+  if (wrapperMatch) {
+    parts.push({ kind: '会话包装上下文', text: prompt.trim() });
+  }
+
+  const hasMultipleMessages = Array.isArray(event.messages) && event.messages.length > 1;
+  const historyPatterns = [
+    /The following project context files have been loaded:/i,
+    /## Inbound Context/i,
+    /## Group Chat Context/i,
+    /Current time:/i,
+  ];
+  const historyMatch = hasMultipleMessages || historyPatterns.some(pattern => pattern.test(prompt));
+  if (historyMatch) {
+    parts.push({ kind: '历史消息拼接', text: prompt.trim() });
+  }
+
+  const dedupedParts = uniqueParts(parts);
+  const effectiveText = extractOriginalUserMessage(event);
+
+  let effectiveKind: ScoringSourceKind = '未知';
+  const normalizedEffective = normalizeWhitespace(effectiveText);
+  for (const part of dedupedParts) {
+    const normalizedPart = normalizeWhitespace(stripInjectedContext(part.text));
+    if (normalizedPart && normalizedPart === normalizedEffective) {
+      effectiveKind = part.kind;
+      break;
+    }
+  }
+  if (effectiveKind === '未知' && messageText.trim() && normalizeWhitespace(stripInjectedContext(messageText)) === normalizedEffective) {
+    effectiveKind = '真实用户消息';
+  }
+
+  return {
+    effectiveText,
+    effectiveKind,
+    parts: dedupedParts,
+    promptPreview,
+    messagePreview,
+  };
+}
+
 // ── Plugin export ───────────────────────────────────────────────────────────
 
 const clawRouterPlugin = {
@@ -165,8 +277,25 @@ const clawRouterPlugin = {
         return;
       }
 
-      const userMessage = extractOriginalUserMessage(event);
+      const sourceDebug = inspectScoringSources(event);
+      const userMessage = sourceDebug.effectiveText;
       if (!userMessage.trim()) return;
+
+      if (pluginConfig.logging) {
+        const sourceLines = sourceDebug.parts.length > 0
+          ? sourceDebug.parts
+              .map((part, index) => `  ${index + 1}. ${part.kind}: ${truncatePreview(part.text) || '<empty>'}`)
+              .join('\n')
+          : '  1. 未知: <empty>';
+
+        log.info(
+          `[claw-router] Scoring input trace=${traceId}\n` +
+          ` Effective: ${sourceDebug.effectiveKind}: ${truncatePreview(userMessage) || '<empty>'}\n` +
+          ` PromptPreview: ${sourceDebug.promptPreview || '<empty>'}\n` +
+          ` MessagePreview: ${sourceDebug.messagePreview || '<empty>'}\n` +
+          ` Sources:\n${sourceLines}`
+        );
+      }
 
       // 如果只有 default 模型（用户没配 models），跳过路由
       const hasUserModels = pluginConfig.models.some(m => m.id !== 'default');
