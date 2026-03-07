@@ -36,7 +36,10 @@ export function logDecision(decision: RouteDecision, logging: boolean, logger?: 
     `  Latency:    ${latencyMs} ms\n` +
     `────────────────────────────────────`;
 
-  // Use provided logger or fall back to console
-  // Use console.log to ensure visibility in OpenClaw logs
+  if (logger) {
+    logger.info(message);
+    return;
+  }
+
   console.log(message);
 }

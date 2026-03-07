@@ -15,6 +15,7 @@ import { route } from './src/router/engine';
 import { LlmScorer } from './src/router/llm-scorer';
 import { resolveConfig, type ResolvedConfig } from './src/config';
 import { logDecision } from './src/logger';
+import { LlmClient } from './src/llm-client';
 import { Tier, type RouterConfig, type RouterStats, type RouteDecision } from './src/router/types';
 import { createStats, trackDecision } from './src/stats';
 import { applyModelToSession, parseAgentId } from './src/session';
@@ -40,73 +41,28 @@ const clawRouterPlugin = {
     // Initialize LLM scorer if enabled
     if (pluginConfig.llmScoring?.enabled) {
       const llmConfig = pluginConfig.llmScoring;
-
       const model = llmConfig.model || 'deepseek-ai/DeepSeek-V3-Chat';
 
       // Require user to configure apiKey and baseUrl
       if (!llmConfig.apiKey || !llmConfig.baseUrl) {
         api.logger.warn('[claw-router] LLM scoring requires apiKey and baseUrl in llmScoring config. LLM scoring disabled.');
       } else {
-        // 创建 LLM 调用函数（带 3s 超时保护）
+        const llmClient = new LlmClient({
+          apiKey: llmConfig.apiKey,
+          baseUrl: llmConfig.baseUrl,
+          apiPath: llmConfig.apiPath,
+          timeoutMs: 3000,
+        });
+
         const invokeLLM = async (modelName: string, prompt: string): Promise<string> => {
-          const { apiKey, baseUrl, apiPath } = detectProviderFromModel(modelName, llmConfig);
-
-          // 保留完整模型路径，但去掉 "siliconflow/" 前缀
-          let actualModel = modelName;
-          if (modelName.startsWith('siliconflow/')) {
-            actualModel = modelName.substring('siliconflow/'.length);
-          }
-
-          console.log(`[claw-router] LLM API 调用: model=${actualModel}`);
-
-          // 3 秒超时保护
-          const controller = new AbortController();
-          const timeout = setTimeout(() => controller.abort(), 3000);
-
-          try {
-            const response = await fetch(`${baseUrl}${apiPath}`, {
-              method: 'POST',
-              headers: {
-                'Authorization': `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                model: actualModel,
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.1,
-                max_tokens: 256
-              }),
-              signal: controller.signal,
-            });
-
-            if (!response.ok) {
-              const errorText = await response.text();
-              throw new Error(`LLM API 错误: ${response.status} - ${errorText}`);
-            }
-
-            const data = await response.json();
-            return data.choices?.[0]?.message?.content || '';
-          } finally {
-            clearTimeout(timeout);
-          }
+          const response = await llmClient.invoke(modelName, prompt);
+          api.logger.info(`[claw-router] LLM API 调用: model=${modelName}`);
+          return response;
         };
 
         pluginConfig.llmScorerInstance = new LlmScorer(llmConfig, invokeLLM);
         api.logger.info(`[claw-router] LLM 评分已启用: model=${model}`);
       }
-    }
-
-    // Helper: detect provider config from model name
-    function detectProviderFromModel(modelName: string, config: any): { apiKey: string; baseUrl: string; apiPath: string } {
-      if (!config.apiKey || !config.baseUrl) {
-        throw new Error(`[claw-router] LLM scoring requires apiKey and baseUrl in llmScoring config.`);
-      }
-
-      return {
-        apiKey: config.apiKey,
-        baseUrl: config.baseUrl,
-        apiPath: config.apiPath || '/v1/chat/completions'
-      };
     }
 
     const log = api.logger;

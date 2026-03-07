@@ -21,8 +21,8 @@ All notable changes to this project will be documented in this file.
 - `config.ts`: `tiers`/`taskRouting` → `models` array with default fallback model
 - `engine.ts`: `finalize()` now async, uses model-matcher + LLM arbitration
 - `llm-scorer.ts`: Added `arbitrate()` method with dedicated prompt
-- `index.ts`: Logging includes `matchSource` and `candidates`
-- `logger.ts`: Output includes TaskType and Match source
+- `index.ts`: Logging includes `matchSource` and `candidates`; LLM scoring now reuses the shared `llm-client.ts` request path
+- `logger.ts`: Output includes TaskType and Match source, and prefers `api.logger.info()` when a logger is provided
 - `openclaw.plugin.json`: Schema updated, version 2.0.0
 
 ### Removed
@@ -75,7 +75,7 @@ This feature requires OpenClaw to expose token usage data in the `agent_end` hoo
   - New format uses `plugins.load.paths` for local plugin directories
   - `plugins.entries.<id>` now only accepts `enabled` and `config` keys
   - Removed support for `path` and `entry` keys in entries (was causing "Unrecognized keys" error)
-- **Logging Visibility**: Fixed `logDecision` to use `console.log` directly instead of `logger.info`, ensuring routing decision logs always appear in OpenClaw logs regardless of log level configuration.
+- **Logging Visibility**: Standardized `logDecision` to prefer `api.logger.info()` when available, with `console.log` as a fallback for non-plugin contexts.
 
 ### Configuration Migration (OpenClaw 2026.2.13+)
 
@@ -117,7 +117,7 @@ This feature requires OpenClaw to expose token usage data in the `agent_end` hoo
 ## [1.0.2] - 2026-02-14
 
 ### Fixed
-- **Logging not showing in OpenClaw Gateway**: The `logDecision` function was using `console.log` directly, which doesn't appear in OpenClaw's structured logging system. Fixed by adding optional `logger` parameter to `logDecision` and passing `api.logger` from the plugin registration context.
+- **Logging not showing in OpenClaw Gateway**: Added optional `logger` support to `logDecision` and updated plugin call sites to pass `api.logger`.
 
 ### Technical Details
 - Modified `src/logger.ts`: Added `Logger` interface and optional `logger` parameter to `logDecision` function
@@ -130,7 +130,7 @@ logDecision(decision, pluginConfig.logging);  // Uses console.log, not captured 
 
 ### After (fixed)
 ```typescript
-logDecision(decision, pluginConfig.logging, log);  // Uses api.logger.info()
+logDecision(decision, pluginConfig.logging, log);  // Prefers api.logger.info(), falls back to console.log
 ```
 
 ## [1.0.1] - 2026-02-13
