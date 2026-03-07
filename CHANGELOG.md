@@ -21,7 +21,7 @@ All notable changes to this project will be documented in this file.
 - `config.ts`: `tiers`/`taskRouting` → `models` array with default fallback model
 - `engine.ts`: `finalize()` now async, uses model-matcher + LLM arbitration
 - `llm-scorer.ts`: Added `arbitrate()` method with dedicated prompt
-- `index.ts`: Logging includes `matchSource` and `candidates`; LLM scoring now reuses the shared `llm-client.ts` request path; routing now prefers the original user message instead of injected prompt context
+- `index.ts`: Logging includes `matchSource` and `candidates`; LLM scoring now reuses the shared `llm-client.ts` request path; routing now prefers the original user message instead of injected prompt context and avoids prompt pollution from prepended routing metadata
 - `logger.ts`: Output includes TaskType and Match source, and prefers `api.logger.info()` when a logger is provided
 - `openclaw.plugin.json`: Schema updated, version 2.0.0
 

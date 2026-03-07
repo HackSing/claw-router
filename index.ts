@@ -181,12 +181,7 @@ const clawRouterPlugin = {
         }
       }
 
-      // Prepend routing context if logging enabled
-      if (pluginConfig.logging) {
-        return {
-          prependContext: `[claw-router: tier=${decision.tier}, taskType=${decision.taskType}, model=${targetModel}, match=${decision.matchSource}, score=${decision.score.calibrated.toFixed(3)}]`,
-        };
-      }
+      // 日志记录已经足够，避免将路由元信息注入 prompt 造成后续回合污染
     });
 
     // ══════════════════════════════════════════════════════════════════════
