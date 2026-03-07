@@ -14,6 +14,7 @@ import type { ResolvedConfig } from '../config';
 import { checkOverrides } from './overrides';
 import { scoreDimensions } from './scorer';
 import { classifyTask } from './task-classifier';
+import { computeSemanticScores } from './semantic';
 import { extractTraits, scoreModels, selectModel } from './model-matcher';
 import { extractSemanticSignals } from './semantic-signals';
 import { applyContextModifier } from './context';
@@ -61,20 +62,47 @@ export async function route(
     return finalize(score, config, message, t0, scorer);
   }
 
-  // 2. 8 维度规则评分（本地，< 1ms）
-  const dimensions = scoreDimensions(message, config.weights);
-  const rawSum = dimensions.reduce((s, d) => s + d.weighted, 0);
-  let calibrated = calibrate(rawSum);
-  let ruleTier = scoreToTier(calibrated, config.thresholds);
+  // 2. Semantic Routing (语义路由主干道)
+  let semanticScore: ScoreResult | null = null;
+  let semanticTaskType: TaskType | null = null;
 
-  let ruleScore: ScoreResult = { dimensions, rawSum, calibrated, tier: ruleTier };
+  if (config.enableSemanticRouting) {
+    try {
+      const semanticResults = await computeSemanticScores(message);
+      // 选取最高相似度且必须超过阈值 0.45 否则视为无意义
+      if (semanticResults && semanticResults.length > 0 && semanticResults[0].similarity > 0.45) {
+        const topMatch = semanticResults[0];
+        if (topMatch.tier) {
+          semanticScore = buildOverrideScore(topMatch.tier, `semantic_match (${topMatch.similarity.toFixed(2)})`);
+        }
+        if (topMatch.taskType) {
+          semanticTaskType = topMatch.taskType;
+        }
+      }
+    } catch (err) {
+      console.error('[claw-router] Semantic routing failed, falling back to heuristics:', err);
+    }
+  }
+
+  // 3. Fallback Heuristics (兜底评分)
+  const dimensions = scoreDimensions(message, config.weights);
+  let ruleScore: ScoreResult;
+  if (semanticScore) {
+    ruleScore = semanticScore;
+    ruleScore.dimensions = dimensions;
+  } else {
+    const rawSum = dimensions.reduce((s, d) => s + d.weighted, 0);
+    let calibrated = calibrate(rawSum);
+    let ruleTier = scoreToTier(calibrated, config.thresholds);
+    ruleScore = { dimensions, rawSum, calibrated, tier: ruleTier };
+  }
 
   // === Phase 1: Context Awareness 历史上下文修饰 ===
   ruleScore = applyContextModifier(message, history, ruleScore, config.weights, config.thresholds);
 
   // 3. 条件触发 LLM 评分（仅在边界区间且 LLM 已启用时）
   if (scorer && config.llmScoring?.enabled) {
-    if (isNearBoundary(calibrated, config.thresholds)) {
+    if (isNearBoundary(ruleScore.calibrated, config.thresholds)) {
       try {
         const llmResult = await scorer.evaluate(message);
         if (llmResult) {
@@ -89,7 +117,7 @@ export async function route(
   }
 
   // 4. 返回规则评分结果
-  return finalize(ruleScore, config, message, t0, scorer);
+  return finalize(ruleScore, config, message, t0, scorer, semanticTaskType || undefined);
 }
 
 /**
@@ -203,8 +231,9 @@ async function finalize(
   message: string,
   t0: number,
   scorer: LlmScorer | null = null,
+  semanticTaskType?: TaskType
 ): Promise<RouteDecision> {
-  const taskType = classifyTask(message);
+  const taskType = semanticTaskType || classifyTask(message);
   const adjustedScore = applyTechnicalReviewFloor(score, taskType, message, config.thresholds);
 
   // trait 匹配

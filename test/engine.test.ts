@@ -378,3 +378,21 @@ describe('Routing Engine — Context Awareness', () => {
   });
 });
 
+// ═══════════════════════════════════════════════════════════════════════════
+// Routing Engine — Semantic Routing
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('Routing Engine — Semantic Routing', () => {
+  it('应当能识别无明显技术关键词的复杂语义并提升至高复杂度 Tier', async () => {
+    // 这句话没有任何明显的 hard-coded "code", "architecture" 英语技术标识
+    // 但是在中文语境下，它描述了相当宏大的系统建设
+    const semanticMsg = '帮我构思一套支持跨城异地多活的电商秒杀交易系统，并考虑到熔断和降级机制';
+    const decision = await route(semanticMsg, config);
+    // 应当不低于 COMPLEX （预期 EXPERT）
+    assert.ok(
+      decision.tier === Tier.COMPLEX || decision.tier === Tier.EXPERT,
+      `Semantic Model should map this to high tier, got ${decision.tier}`
+    );
+  });
+});
+

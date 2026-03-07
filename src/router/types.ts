@@ -151,6 +151,8 @@ export interface RouterConfig {
   };
   llmScoring?: LlmScoringConfig;
   logging?: boolean;
+  /** 是否开启基于本地模型的语义路由（默认：true） */
+  enableSemanticRouting?: boolean;
 }
 
 // ── Keyword Entry ───────────────────────────────────────────────────────────

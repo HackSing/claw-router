@@ -10,12 +10,14 @@ All notable changes to this project will be documented in this file.
 - **TaskType enum**: `GENERAL` renamed to `OTHER`
 
 ### Added
+- **历史上下文感知 (Context-Awareness)**：引入流路由能力，分析多轮历史背景的复杂度并提供短指令补偿，消除上下文断层导致的降权误判。
+- **本地语义路由 (Semantic Routing)**：基于 `@xenova/transformers` 构建纯本地特征抽取架构。使用余弦相似度的非正则判定对自然表达进行难度分级，解决传统正则“语境盲区”。
 - **Trait-based model routing**: Declare model capabilities via traits, router matches automatically
 - **Model Matcher** (`model-matcher.ts`): Trait extraction → model scoring → model selection
 - **LLM Arbitration**: When multiple models tie on trait match, LLM picks the best one
 - **New TaskTypes**: `math` (mathematics, formulas) and `research` (papers, literature)
 - **New types**: `ModelProfile`, `TraitMatchResult`, `MatchSource`
-- 127 test cases across 14 suites (up from 75)
+- 142 test cases across 21 suites (up from 75)
 
 ### Changed
 - `config.ts`: `tiers`/`taskRouting` → `models` array with default fallback model

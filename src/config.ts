@@ -44,6 +44,8 @@ export interface ResolvedConfig {
   weights: Record<Dimension, number>;
   logging: boolean;
   llmScoring?: LlmScoringConfig;
+  /** 是否开启基于本地模型的语义路由（默认：true） */
+  enableSemanticRouting: boolean;
   /** 运行时注入的 LLM 评分器实例 */
   llmScorerInstance?: import('./router/llm-scorer').LlmScorer;
 }
@@ -105,6 +107,7 @@ export function resolveConfig(raw?: RouterConfig): ResolvedConfig {
     thresholds,
     weights,
     logging: raw?.logging ?? false,
+    enableSemanticRouting: raw?.enableSemanticRouting !== false,
     llmScoring: raw?.llmScoring,
   };
 }
