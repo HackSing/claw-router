@@ -17,7 +17,7 @@ Not every message needs GPT-4 or Claude Opus. A "hello" can go to a fast, cheap 
 
 ```
 User: "hi"           → TRIVIAL  → doubao-seed-code     (fast, cheap)
-User: "写个爬虫"      → COMPLEX  → gpt-5.3-codex-high  (capable)
+User: "写个爬虫"      → COMPLEX  → gpt-5.3-codex-high  (example outcome)
 User: "设计分布式架构"  → EXPERT   → claude-opus-4       (best)
 ```
 
@@ -238,7 +238,7 @@ await rpc('route.stats');
 ```
 
 LLM is invoked in two scenarios:
-1. **Tier boundary**: Rule score near threshold (±0.08) — LLM refines complexity (~70% skip)
+1. **Tier boundary**: Rule score near threshold (±0.08) — LLM refines complexity, so most messages skip LLM calls
 2. **Model arbitration**: Multiple models tie on trait match — LLM picks best one
 
 Includes 3-second timeout with automatic fallback.
@@ -263,7 +263,7 @@ These take priority over scoring:
 | Condition | Result |
 |-----------|--------|
 | Message ≤ 5 chars, no tech words | → TRIVIAL |
-| 3+ code fences (```) | → COMPLEX |
+| Multiple code fences with sufficient code volume | → COMPLEX |
 | Contains "system design", "from scratch", etc. | → EXPERT |
 
 ---

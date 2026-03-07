@@ -106,7 +106,7 @@ export interface ModelProfile {
 /** 单个模型的 trait 匹配结果。 */
 export interface TraitMatchResult {
   model: ModelProfile;
-  /** 匹配得分：matchedTraits.length / messageTraits.length */
+  /** 匹配得分：基于 Tier 邻近匹配和 TaskType 精确匹配的加权结果 */
   score: number;
   /** 命中的 traits */
   matchedTraits: string[];

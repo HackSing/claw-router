@@ -4,7 +4,7 @@
   "version": "2.0.0",
   "description": "Intelligent model routing plugin for OpenClaw — routes messages to optimal AI models based on trait-based capability matching",
   "author": "aiwaretop",
-  "license": "MIT",
+  "license": "AIWare Community License",
   "repository": {
     "type": "git",
     "url": "https://github.com/HackSing/claw-router.git"
