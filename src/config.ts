@@ -14,8 +14,11 @@ import {
   DEFAULT_THRESHOLDS,
   type RouterConfig,
   type ModelProfile,
-  type LlmScoringConfig,
+  type ResolvedConfig,
 } from './router/types';
+
+// ResolvedConfig 已迁移至 types.ts，此处重新导出以保持向后兼容。
+export type { ResolvedConfig } from './router/types';
 
 // ── 默认模型（全能 fallback）─────────────────────────────────────────────
 
@@ -35,20 +38,6 @@ const VALID_TRAITS = new Set([
   ...Object.values(Tier).map(t => t.toLowerCase()),
   ...Object.values(TaskType).map(t => t.toLowerCase()),
 ]);
-
-// ── 解析后的完整配置 ─────────────────────────────────────────────────────
-
-export interface ResolvedConfig {
-  models: ModelProfile[];
-  thresholds: [number, number, number, number];
-  weights: Record<Dimension, number>;
-  logging: boolean;
-  llmScoring?: LlmScoringConfig;
-  /** 是否开启基于本地模型的语义路由（默认：true） */
-  enableSemanticRouting: boolean;
-  /** 运行时注入的 LLM 评分器实例 */
-  llmScorerInstance?: import('./router/llm-scorer').LlmScorer;
-}
 
 /**
  * 合并用户配置与默认值。
@@ -107,8 +96,7 @@ export function resolveConfig(raw?: RouterConfig): ResolvedConfig {
     thresholds,
     weights,
     logging: raw?.logging ?? false,
-    enableSemanticRouting: raw?.enableSemanticRouting !== false,
+    enableSemanticRouting: raw?.enableSemanticRouting === true,
     llmScoring: raw?.llmScoring,
   };
 }
-

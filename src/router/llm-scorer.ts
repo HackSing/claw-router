@@ -9,7 +9,7 @@
  */
 
 import { Tier, type ScoreResult, type DimensionScore, Dimension, DEFAULT_WEIGHTS, type LlmScoringConfig, type TraitMatchResult } from './types';
-import { TIER_CALIBRATED_SCORES } from './math-utils';
+import { inverseCalibrate, TIER_CALIBRATED_SCORES } from './math-utils';
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
@@ -182,6 +182,7 @@ export class LlmScorer {
    */
   convertToScoreResult(llmResult: LlmScoreResult): ScoreResult {
     const calibrated = TIER_CALIBRATED_SCORES[llmResult.tier] ?? 0.28;
+    const rawSum = inverseCalibrate(calibrated);
 
     const dimensions: DimensionScore[] = Object.values(Dimension).map((dim) => ({
       dimension: dim as Dimension,
@@ -192,7 +193,7 @@ export class LlmScorer {
 
     return {
       dimensions,
-      rawSum: calibrated,
+      rawSum,
       calibrated,
       tier: llmResult.tier,
       overrideApplied: 'llm_classification',

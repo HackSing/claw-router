@@ -6,6 +6,7 @@
 
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import { resolveConfig } from '../src/config';
 import { Dimension, DEFAULT_WEIGHTS, DEFAULT_THRESHOLDS } from '../src/router/types';
 
@@ -81,5 +82,25 @@ describe('resolveConfig — traits 校验', () => {
         });
         // 不应抛异常，模型仍应存在
         assert.ok(config.models.some(m => m.id === 'test'));
+    });
+});
+
+describe('resolveConfig — semantic routing', () => {
+    it('默认关闭语义路由，保持纯规则路径', () => {
+        const config = resolveConfig();
+        assert.equal(config.enableSemanticRouting, false);
+    });
+
+    it('显式配置 enableSemanticRouting=true 时启用', () => {
+        const config = resolveConfig({ enableSemanticRouting: true });
+        assert.equal(config.enableSemanticRouting, true);
+    });
+
+    it('plugin schema 暴露 enableSemanticRouting 配置项', () => {
+        const manifest = JSON.parse(
+            readFileSync(new URL('../openclaw.plugin.json', import.meta.url), 'utf-8'),
+        );
+        assert.equal(manifest.configSchema.properties.enableSemanticRouting.type, 'boolean');
+        assert.equal(manifest.configSchema.properties.enableSemanticRouting.default, false);
     });
 });

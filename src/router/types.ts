@@ -151,7 +151,7 @@ export interface RouterConfig {
   };
   llmScoring?: LlmScoringConfig;
   logging?: boolean;
-  /** 是否开启基于本地模型的语义路由（默认：true） */
+  /** 是否开启基于本地模型的语义路由（默认：false） */
   enableSemanticRouting?: boolean;
 }
 
@@ -180,4 +180,19 @@ export interface RouterStats {
   tierCounts: Record<Tier, number>;
   avgLatencyMs: number;
   overrideCount: number;
+}
+
+// ── Resolved Config ────────────────────────────────────────────────────────
+
+/** 解析后的完整配置（用户配置 + 默认值合并后的结果）。 */
+export interface ResolvedConfig {
+  models: ModelProfile[];
+  thresholds: [number, number, number, number];
+  weights: Record<Dimension, number>;
+  logging: boolean;
+  llmScoring?: LlmScoringConfig;
+  /** 是否开启基于本地模型的语义路由（默认：true） */
+  enableSemanticRouting: boolean;
+  /** 运行时注入的 LLM 评分器实例（延迟导入，避免循环依赖） */
+  llmScorerInstance?: import('./llm-scorer').LlmScorer;
 }

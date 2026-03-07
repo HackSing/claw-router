@@ -29,6 +29,15 @@ export function calibrate(x: number): number {
     return 1 / (1 + Math.exp(-8 * (x - 0.18)));
 }
 
+/**
+ * calibrate() 的反函数：将 0–1 的 calibrated 分数映射回校准前 rawSum。
+ * 用于 override / LLM 结果与上下文补偿保持同一数值空间。
+ */
+export function inverseCalibrate(score: number): number {
+    const clamped = clamp(score, 1e-6, 1 - 1e-6);
+    return 0.18 + Math.log(clamped / (1 - clamped)) / 8;
+}
+
 /** 将 calibrated 分数映射到 tier。 */
 export function scoreToTier(
     score: number,

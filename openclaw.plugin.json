@@ -61,6 +61,11 @@
         "description": "启用详细路由日志",
         "default": false
       },
+      "enableSemanticRouting": {
+        "type": "boolean",
+        "description": "启用基于本地嵌入模型的语义路由（默认关闭，开启后首次使用会下载语义模型）",
+        "default": false
+      },
       "llmScoring": {
         "type": "object",
         "description": "LLM 辅助评分配置。规则评分处于 tier 边界时触发，同时用于多模型冲突仲裁。",

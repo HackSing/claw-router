@@ -8,6 +8,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { route, scoreOnly, isNearBoundary } from '../src/router/engine';
+import { calibrate } from '../src/router/math-utils';
 import { resolveConfig } from '../src/config';
 import { Tier, TIER_ORDER, DEFAULT_THRESHOLDS } from '../src/router/types';
 import { fixtures } from './fixtures';
@@ -169,6 +170,22 @@ describe('scoreOnly — 校准与评分', () => {
     assert.ok(low.calibrated > 0, `Low score ${low.calibrated} should be > 0`);
     assert.ok(high.calibrated < 1, `High score ${high.calibrated} should be < 1`);
   });
+
+  it('override score 的 rawSum 保持在校准前空间', () => {
+    const score = scoreOnly('hi', config);
+    assert.ok(
+      Math.abs(calibrate(score.rawSum) - score.calibrated) < 1e-9,
+      `Override rawSum should round-trip through calibrate(), got rawSum=${score.rawSum}, calibrated=${score.calibrated}`,
+    );
+  });
+
+  it('override + 历史补偿不会因为双重校准被异常抬高', () => {
+    const score = scoreOnly('hi', config, [
+      '请设计一个高并发分布式系统，包含服务发现、负载均衡、链路追踪、熔断和回滚策略。',
+    ]);
+    assert.ok(score.calibrated > 0.08, 'Context should still provide a mild boost');
+    assert.ok(score.calibrated < 0.2, `Boost should stay mild, got ${score.calibrated}`);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -198,6 +215,11 @@ describe('LlmScorer — parseResponse & convertToScoreResult', () => {
       assert.equal(dim.raw, 0);
       assert.equal(dim.weighted, 0);
     }
+  });
+
+  it('convertToScoreResult: rawSum 与 calibrated 保持可逆', () => {
+    const result = scorer.convertToScoreResult({ tier: Tier.COMPLEX, confidence: 0.8, reasoning: 'test' });
+    assert.ok(Math.abs(calibrate(result.rawSum) - result.calibrated) < 1e-9);
   });
 
   it('evaluate: LLM 返回合法 JSON 时正确解析', async () => {
@@ -334,6 +356,35 @@ describe('Routing — 边界消息行为', () => {
     // 闲聊应路由到 chat-model
     assert.equal(chatDecision.model, 'chat-model');
   });
+
+  it('LLM merge 使用自定义 thresholds 重新映射 tier', async () => {
+    const probeConfig = resolveConfig({ enableSemanticRouting: false });
+    const probeMessages = ['git', 'API', 'docker', 'npm', 'json'];
+    const probe = probeMessages
+      .map(message => ({ message, score: scoreOnly(message, probeConfig) }))
+      .find(entry => !entry.score.overrideApplied && entry.score.calibrated < 0.29);
+
+    assert.ok(probe, 'Expected a low-score technical probe message that does not trigger override');
+
+    const mergedCalibrated = 0.3 * probe!.score.calibrated + 0.7 * 0.9;
+    assert.ok(
+      mergedCalibrated < DEFAULT_THRESHOLDS[3],
+      `Merged score must stay below default EXPERT threshold to expose the regression, got ${mergedCalibrated}`,
+    );
+
+    const custom = resolveConfig({
+      enableSemanticRouting: false,
+      thresholds: [probe!.score.calibrated + 0.01, 0.30, 0.45, mergedCalibrated - 0.01],
+      llmScoring: { enabled: true, model: 'test' },
+    });
+    custom.llmScorerInstance = new LlmScorer(
+      { enabled: true, model: 'test' },
+      async () => '{"tier":"EXPERT","confidence":1,"reasoning":"test"}',
+    );
+
+    const decision = await route(probe!.message, custom);
+    assert.equal(decision.tier, Tier.EXPERT);
+  });
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
@@ -341,34 +392,36 @@ describe('Routing — 边界消息行为', () => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 describe('Routing Engine — Context Awareness', () => {
+  const heuristicConfig = resolveConfig({ enableSemanticRouting: false });
+
   it('应当为含有复杂历史背景对极短句提权', async () => {
     // 1. 无历史情况下，短句应当得低分 (TRIVIAL 或 SIMPLE)
     const shortMsg = '怎么修？';
-    const noHistoryDecision = await route(shortMsg, config);
+    const noHistoryDecision = await route(shortMsg, heuristicConfig);
 
     // 2. 有大量的极长堆栈报错和复杂代码架构的设计讨论作为背景
     const heavyHistory = [
       '```typescript\n' + 'export class MyFramework {\n  //...\n'.repeat(50) + '```\n',
       'This error occurred: System.OutOfMemoryException during scaling across 5 Kubernetes pods.',
     ];
-    const historyDecision = await route(shortMsg, config, heavyHistory);
+    const historyDecision = await route(shortMsg, heuristicConfig, heavyHistory);
 
     // 断言：有历史的补全得分应当明显高于无历史的基准得分，且足以跨越 Tier
     assert.ok(
-      historyDecision.score.calibrated > noHistoryDecision.score.calibrated + 0.1,
+      historyDecision.score.calibrated > noHistoryDecision.score.calibrated + 0.02,
       `History score (${historyDecision.score.calibrated}) should be visibly boosted over base (${noHistoryDecision.score.calibrated})`
     );
     assert.ok(
-      historyDecision.tier !== noHistoryDecision.tier || historyDecision.score.calibrated > 0.6,
-      `Tier should ideally be elevated due to the extreme complexity in history`
+      historyDecision.score.calibrated < 0.25,
+      `Context boost should stay bounded for short follow-ups, got ${historyDecision.score.calibrated}`
     );
   });
 
   it('连续的短句（低复杂度）历史不应显著影响得分', async () => {
     const shortMsg = '继续';
-    const noHistoryDecision = await route(shortMsg, config);
+    const noHistoryDecision = await route(shortMsg, heuristicConfig);
     const trivialHistory = ['好的', '没问题'];
-    const historyDecision = await route(shortMsg, config, trivialHistory);
+    const historyDecision = await route(shortMsg, heuristicConfig, trivialHistory);
 
     // 断言：都是闲聊废话的背景不改变原有的低分
     assert.ok(
@@ -384,10 +437,11 @@ describe('Routing Engine — Context Awareness', () => {
 
 describe('Routing Engine — Semantic Routing', () => {
   it('应当能识别无明显技术关键词的复杂语义并提升至高复杂度 Tier', async () => {
+    const semanticConfig = resolveConfig({ enableSemanticRouting: true });
     // 这句话没有任何明显的 hard-coded "code", "architecture" 英语技术标识
     // 但是在中文语境下，它描述了相当宏大的系统建设
     const semanticMsg = '帮我构思一套支持跨城异地多活的电商秒杀交易系统，并考虑到熔断和降级机制';
-    const decision = await route(semanticMsg, config);
+    const decision = await route(semanticMsg, semanticConfig);
     // 应当不低于 COMPLEX （预期 EXPERT）
     assert.ok(
       decision.tier === Tier.COMPLEX || decision.tier === Tier.EXPERT,

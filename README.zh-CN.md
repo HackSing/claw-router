@@ -219,6 +219,7 @@ await rpc('route.stats');
 | `thresholds` | `[n, n, n, n]` | `[0.20, 0.42, 0.58, 0.78]` | Tier 分界阈值 |
 | `scoring.weights` | `Record<Dimension, number>` | 见下表 | 覆盖维度权重 |
 | `logging` | `boolean` | `false` | 启用详细路由日志 |
+| `enableSemanticRouting` | `boolean` | `false` | 启用基于本地嵌入模型的语义路由 |
 | `llmScoring.enabled` | `boolean` | `false` | 启用 LLM 辅助评分与仲裁 |
 | `llmScoring.model` | `string` | — | LLM 评分/仲裁模型 |
 | `llmScoring.apiKey` | `string` | — | LLM API Key |

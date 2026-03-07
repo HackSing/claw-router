@@ -18,9 +18,7 @@ import { logDecision } from './src/logger';
 import { LlmClient } from './src/llm-client';
 import { Tier, type RouterConfig, type RouterStats, type RouteDecision } from './src/router/types';
 import { createStats, trackDecision } from './src/stats';
-import { applyModelToSession, clearModelOverride, parseAgentId } from './src/session';
-import * as fs from 'node:fs';
-import * as path from 'node:path';
+import { applyModelToSession, clearModelOverride, getSessionModelDisplay } from './src/session';
 
 // ── Runtime state ───────────────────────────────────────────────────────────
 
@@ -311,36 +309,14 @@ const clawRouterPlugin = {
       },
       ctx: { sessionKey?: string; agentId?: string },
     ) => {
-      if (!pluginConfig.logging) return;
-      if (!event.tokenUsage) return;
-
-      // Read session store to get actual model used
-      let modelDisplay = 'unknown';
-      if (ctx.sessionKey) {
-        try {
-          const agentId = parseAgentId(ctx.sessionKey);
-          const storePath = path.join(
-            process.env.HOME || '/home/ubuntu',
-            '.openclaw', 'agents', agentId, 'sessions', 'sessions.json',
-          );
-          if (fs.existsSync(storePath)) {
-            const raw = fs.readFileSync(storePath, 'utf-8');
-            const store = JSON.parse(raw);
-            const entry = store[ctx.sessionKey];
-            if (entry) {
-              const provider = entry.providerOverride || entry.modelProvider || 'unknown';
-              const model = entry.modelOverride || entry.model || 'unknown';
-              modelDisplay = `${provider}/${model}`;
-            }
-          }
-        } catch (_err) {
-          // 读取失败时静默降级
-        }
+      if (pluginConfig.logging && event.tokenUsage) {
+        const modelDisplay = ctx.sessionKey
+          ? (getSessionModelDisplay(ctx.sessionKey) ?? 'unknown')
+          : 'unknown';
+        const { input, output, total } = event.tokenUsage;
+        const msg = `[claw-router] Tokens: ${input} in / ${output} out (total: ${total ?? input + output}, duration: ${event.durationMs ?? 0}ms, model: ${modelDisplay})`;
+        log.info(msg);
       }
-
-      const { input, output, total } = event.tokenUsage;
-      const msg = `[claw-router] Tokens: ${input} in / ${output} out (total: ${total ?? input + output}, duration: ${event.durationMs ?? 0}ms, model: ${modelDisplay})`;
-      log.info(msg);
 
       // 清除 model override，让下一轮消息重新走路由决策
       if (ctx.sessionKey) {

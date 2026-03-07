@@ -51,8 +51,10 @@ export function applyContextModifier(
         decay *= 0.5;
     }
 
-    // 上下文环境补偿因子
-    const contextBoost = accumulatedRawSum * weights[Dimension.CONTEXT_DEPEND];
+    // History needs a stronger multiplier than the single-turn context dimension,
+    // otherwise short follow-up prompts barely move after staying in raw-score space.
+    const effectiveContextWeight = weights[Dimension.CONTEXT_DEPEND] * 2;
+    const contextBoost = accumulatedRawSum * effectiveContextWeight;
 
     // 若补偿明显，则修改当次评分
     if (contextBoost > 0.02) {
@@ -65,7 +67,7 @@ export function applyContextModifier(
             newDims[ctxDimIdx] = {
                 dimension: Dimension.CONTEXT_DEPEND,
                 raw: Math.min(1, accumulatedRawSum),
-                weight: weights[Dimension.CONTEXT_DEPEND],
+                weight: effectiveContextWeight,
                 weighted: contextBoost
             };
         }

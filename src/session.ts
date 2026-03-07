@@ -29,6 +29,36 @@ export function parseModelRef(ref: string): { provider: string; model: string } 
     return { provider: ref.slice(0, idx), model: ref.slice(idx + 1) };
 }
 
+export function getSessionStorePath(agentId: string): string {
+    return path.join(
+        os.homedir(),
+        '.openclaw', 'agents', agentId, 'sessions', 'sessions.json',
+    );
+}
+
+function readSessionStore(storePath: string): Record<string, any> | null {
+    if (!fs.existsSync(storePath)) return null;
+    const raw = fs.readFileSync(storePath, 'utf-8');
+    return JSON.parse(raw);
+}
+
+export function getSessionModelDisplay(sessionKey: string): string | null {
+    try {
+        const agentId = parseAgentId(sessionKey);
+        const store = readSessionStore(getSessionStorePath(agentId));
+        if (!store) return null;
+
+        const entry = store[sessionKey];
+        if (!entry) return null;
+
+        const provider = entry.providerOverride || entry.modelProvider || 'unknown';
+        const model = entry.modelOverride || entry.model || 'unknown';
+        return `${provider}/${model}`;
+    } catch {
+        return null;
+    }
+}
+
 /**
  * 直接写入 session store 设置模型覆盖。
  * 读写 ~/.openclaw/agents/<agentId>/sessions/sessions.json。
@@ -40,10 +70,7 @@ export function applyModelToSession(
 ): boolean {
     try {
         const agentId = parseAgentId(sessionKey);
-        const storePath = path.join(
-            os.homedir(),
-            '.openclaw', 'agents', agentId, 'sessions', 'sessions.json',
-        );
+        const storePath = getSessionStorePath(agentId);
 
         if (!fs.existsSync(storePath)) {
             log.warn?.(`[claw-router] Session store not found: ${storePath}`);
@@ -103,10 +130,7 @@ export function clearModelOverride(
 ): boolean {
     try {
         const agentId = parseAgentId(sessionKey);
-        const storePath = path.join(
-            os.homedir(),
-            '.openclaw', 'agents', agentId, 'sessions', 'sessions.json',
-        );
+        const storePath = getSessionStorePath(agentId);
 
         if (!fs.existsSync(storePath)) {
             return false;

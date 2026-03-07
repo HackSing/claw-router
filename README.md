@@ -226,6 +226,7 @@ await rpc('route.stats');
 | `thresholds` | `[n, n, n, n]` | `[0.20, 0.42, 0.58, 0.78]` | Score boundaries between tiers |
 | `scoring.weights` | `Record<Dimension, number>` | See below | Override dimension weights |
 | `logging` | `boolean` | `false` | Enable verbose decision logs |
+| `enableSemanticRouting` | `boolean` | `false` | Enable local embedding-based semantic routing |
 | `llmScoring.enabled` | `boolean` | `false` | Enable LLM-assisted scoring & arbitration |
 | `llmScoring.model` | `string` | — | LLM model for scoring/arbitration |
 | `llmScoring.apiKey` | `string` | — | LLM API key |

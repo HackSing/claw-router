@@ -1,5 +1,9 @@
 import { pipeline, env } from '@xenova/transformers';
 import { Tier, TaskType } from './types';
+import * as fs from 'node:fs';
+import * as path from 'node:path';
+import * as os from 'node:os';
+import * as crypto from 'node:crypto';
 
 // 配置 transformers 运行时环境
 env.allowLocalModels = false;    // 强制从远端拉取模型
@@ -79,13 +83,61 @@ export const ANCHORS: Anchor[] = [
 
 let anchorsInitialized = false;
 
+/** 计算 anchor phrases 的哈希，用于缓存失效检测。 */
+function computeAnchorsHash(): string {
+    const data = ANCHORS.map(a => a.phrases.join('|')).join('\n');
+    return crypto.createHash('md5').update(data).digest('hex');
+}
+
+/** 缓存文件路径：~/.claw-router/anchor-cache.json */
+function getCachePath(): string {
+    return path.join(os.homedir(), '.claw-router', 'anchor-cache.json');
+}
+
+interface AnchorCache {
+    hash: string;
+    vectors: (number[] | null)[];
+}
+
 export async function initializeAnchors() {
     if (anchorsInitialized) return;
+
+    const cachePath = getCachePath();
+    const currentHash = computeAnchorsHash();
+
+    // 尝试从磁盘缓存加载
+    try {
+        if (fs.existsSync(cachePath)) {
+            const raw = JSON.parse(fs.readFileSync(cachePath, 'utf-8')) as AnchorCache;
+            if (raw.hash === currentHash && raw.vectors.length === ANCHORS.length) {
+                for (let i = 0; i < ANCHORS.length; i++) {
+                    ANCHORS[i].vector = raw.vectors[i];
+                }
+                anchorsInitialized = true;
+                return;
+            }
+        }
+    } catch { /* 缓存损坏或不可读，重新生成 */ }
+
+    // 缓存未命中，运行模型推理
     for (const anchor of ANCHORS) {
         const combinedText = anchor.phrases.join(". ");
         anchor.vector = await getEmbedding(combinedText);
     }
     anchorsInitialized = true;
+
+    // 写入磁盘缓存
+    try {
+        const dir = path.dirname(cachePath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        const cache: AnchorCache = {
+            hash: currentHash,
+            vectors: ANCHORS.map(a => a.vector),
+        };
+        fs.writeFileSync(cachePath, JSON.stringify(cache));
+    } catch (err) {
+        console.warn('[claw-router] 无法写入 anchor 缓存:', err);
+    }
 }
 
 export async function computeSemanticScores(message: string) {
