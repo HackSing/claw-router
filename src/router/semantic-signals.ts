@@ -103,11 +103,11 @@ const MULTI_STEP_PATTERNS: RegExp[] = [
   /\b(?:first|then|finally|step by step|plan|checklist|validation|end to end)\b/i,
 ];
 
-function scoreByPatterns(input: string, patterns: RegExp[], strongBoost = 0.55, weakBoost = 0.25): number {
+function scoreByPatterns(input: string, patterns: RegExp[], boost = 0.55): number {
   let score = 0;
-  for (let i = 0; i < patterns.length; i++) {
-    if (patterns[i].test(input)) {
-      score = Math.max(score, i === 0 ? strongBoost : weakBoost);
+  for (const p of patterns) {
+    if (p.test(input)) {
+      score = Math.max(score, boost);
     }
   }
   return clamp(score);
@@ -132,26 +132,26 @@ export function extractSemanticSignals(message: string): SemanticSignals {
   const { lower, compact, hasCodeFence } = ctx;
 
   const techContext = clamp(
-    scoreByPatterns(lower, TECH_PATTERNS, 0.65, 0.35) + (hasCodeFence ? 0.25 : 0),
+    scoreByPatterns(lower, TECH_PATTERNS, 0.65) + (hasCodeFence ? 0.25 : 0),
   );
 
   const codeArtifact = clamp(
-    scoreByPatterns(message, CODE_ARTIFACT_PATTERNS, 0.70, 0.35) + (hasCodeFence ? 0.20 : 0),
+    scoreByPatterns(message, CODE_ARTIFACT_PATTERNS, 0.70) + (hasCodeFence ? 0.20 : 0),
   );
 
-  const implementationIntent = scoreByPatterns(lower, IMPLEMENTATION_PATTERNS, 0.65, 0.35);
-  const reviewIntent = scoreByPatterns(lower, REVIEW_PATTERNS, 0.75, 0.40);
-  const analysisIntent = scoreByPatterns(lower, ANALYSIS_PATTERNS, 0.60, 0.30);
-  const architectureIntent = scoreByPatterns(lower, ARCHITECTURE_PATTERNS, 0.85, 0.45);
-  const writingIntent = scoreByPatterns(lower, WRITING_PATTERNS, 0.70, 0.35);
-  const translationIntent = scoreByPatterns(lower, TRANSLATION_PATTERNS, 0.90, 0.45);
-  const mathIntent = scoreByPatterns(lower, MATH_PATTERNS, 0.75, 0.35);
-  const researchIntent = scoreByPatterns(lower, RESEARCH_PATTERNS, 0.75, 0.35);
-  const contextDependency = scoreByPatterns(lower, CONTEXT_PATTERNS, 0.55, 0.30);
-  const reasoningIntent = clamp(scoreByPatterns(lower, REASONING_PATTERNS, 0.55, 0.25) + ((compact.match(/[？?]/g) || []).length >= 2 ? 0.1 : 0));
-  const multiStepIntent = clamp(scoreByPatterns(lower, MULTI_STEP_PATTERNS, 0.60, 0.30) + ((compact.match(/[，、；,]/g) || []).length >= 2 ? 0.1 : 0));
+  const implementationIntent = scoreByPatterns(lower, IMPLEMENTATION_PATTERNS, 0.65);
+  const reviewIntent = scoreByPatterns(lower, REVIEW_PATTERNS, 0.75);
+  const analysisIntent = scoreByPatterns(lower, ANALYSIS_PATTERNS, 0.60);
+  const architectureIntent = scoreByPatterns(lower, ARCHITECTURE_PATTERNS, 0.85);
+  const writingIntent = scoreByPatterns(lower, WRITING_PATTERNS, 0.70);
+  const translationIntent = scoreByPatterns(lower, TRANSLATION_PATTERNS, 0.90);
+  const mathIntent = scoreByPatterns(lower, MATH_PATTERNS, 0.75);
+  const researchIntent = scoreByPatterns(lower, RESEARCH_PATTERNS, 0.75);
+  const contextDependency = scoreByPatterns(lower, CONTEXT_PATTERNS, 0.55);
+  const reasoningIntent = clamp(scoreByPatterns(lower, REASONING_PATTERNS, 0.55) + ((compact.match(/[？?]/g) || []).length >= 2 ? 0.1 : 0));
+  const multiStepIntent = clamp(scoreByPatterns(lower, MULTI_STEP_PATTERNS, 0.60) + ((compact.match(/[，、；,]/g) || []).length >= 2 ? 0.1 : 0));
 
-  let chatIntent = scoreByPatterns(compact, CHAT_PATTERNS, 0.80, 0.35);
+  let chatIntent = scoreByPatterns(compact, CHAT_PATTERNS, 0.80);
   if (compact.length <= 12 && techContext < 0.2 && reviewIntent < 0.2 && implementationIntent < 0.2) {
     chatIntent = Math.max(chatIntent, 0.45);
   }

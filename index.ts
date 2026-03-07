@@ -114,6 +114,7 @@ type ScoringSourceDebug = {
   promptPreview: string;
   messagePreview: string;
   messageCandidateCount: number;
+  history: string[];
 };
 
 function normalizeWhitespace(text: string): string {
@@ -169,6 +170,7 @@ function inspectScoringSources(event: { prompt?: string; messages?: unknown[] })
       promptPreview,
       messagePreview,
       messageCandidateCount: strippedCandidates.length,
+      history: strippedCandidates,
     };
   }
 
@@ -180,6 +182,7 @@ function inspectScoringSources(event: { prompt?: string; messages?: unknown[] })
       promptPreview,
       messagePreview,
       messageCandidateCount: strippedCandidates.length,
+      history: strippedCandidates.slice(1),
     };
   }
 
@@ -190,6 +193,7 @@ function inspectScoringSources(event: { prompt?: string; messages?: unknown[] })
     promptPreview,
     messagePreview,
     messageCandidateCount: 0,
+    history: [],
   };
 }
 
@@ -254,7 +258,7 @@ const clawRouterPlugin = {
 
       if (pluginConfig.logging) {
         log.info(
-          `[claw-router] Scoring input trace=${traceId}\n` +
+          `[claw-router] Scoring input trace=${ctx.sessionKey || 'undefined'}\n` +
           ` SelectedFrom: ${sourceDebug.selectedFrom}\n` +
           ` Effective: ${truncatePreview(userMessage) || '<empty>'}\n` +
           ` PromptPreview: ${sourceDebug.promptPreview || '<empty>'}\n` +
@@ -269,7 +273,7 @@ const clawRouterPlugin = {
       if (!hasUserModels) return;
 
       // Run the router
-      const decision = await route(userMessage, pluginConfig);
+      const decision = await route(userMessage, pluginConfig, sourceDebug.history);
       trackDecision(stats, decision);
 
       const targetModel = decision.model;
@@ -364,7 +368,7 @@ const clawRouterPlugin = {
       async execute(_id: string, params: { message: string }) {
         const decision = await route(params.message, pluginConfig);
         trackDecision(stats, decision);
-        logDecision(decision, pluginConfig.logging, log, { sessionKey: ctx.sessionKey, agentId: ctx.agentId });
+        logDecision(decision, pluginConfig.logging, log);
         return {
           content: [{
             type: 'text' as const,
@@ -512,7 +516,7 @@ const clawRouterPlugin = {
       }
       const decision = await route(message, pluginConfig);
       trackDecision(stats, decision);
-      logDecision(decision, pluginConfig.logging, log, { sessionKey: ctx.sessionKey, agentId: ctx.agentId });
+      logDecision(decision, pluginConfig.logging, log);
       respond(true, decision);
     });
 

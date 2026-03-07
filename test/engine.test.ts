@@ -84,6 +84,9 @@ describe('Routing Engine — core properties', () => {
       thresholds: [0.10, 0.30, 0.50, 0.70],
     });
     const decision = await route('hi', custom);
+    if (decision.model !== 'my-fast-model') {
+      console.log('FAILED DECISION:', decision);
+    }
     // TRIVIAL tier + chat taskType → my-fast-model 应匹配
     assert.equal(decision.model, 'my-fast-model');
   });
@@ -332,3 +335,46 @@ describe('Routing — 边界消息行为', () => {
     assert.equal(chatDecision.model, 'chat-model');
   });
 });
+
+// ═══════════════════════════════════════════════════════════════════════════
+// Routing Engine — Context Awareness
+// ═══════════════════════════════════════════════════════════════════════════
+
+describe('Routing Engine — Context Awareness', () => {
+  it('应当为含有复杂历史背景对极短句提权', async () => {
+    // 1. 无历史情况下，短句应当得低分 (TRIVIAL 或 SIMPLE)
+    const shortMsg = '怎么修？';
+    const noHistoryDecision = await route(shortMsg, config);
+
+    // 2. 有大量的极长堆栈报错和复杂代码架构的设计讨论作为背景
+    const heavyHistory = [
+      '```typescript\n' + 'export class MyFramework {\n  //...\n'.repeat(50) + '```\n',
+      'This error occurred: System.OutOfMemoryException during scaling across 5 Kubernetes pods.',
+    ];
+    const historyDecision = await route(shortMsg, config, heavyHistory);
+
+    // 断言：有历史的补全得分应当明显高于无历史的基准得分，且足以跨越 Tier
+    assert.ok(
+      historyDecision.score.calibrated > noHistoryDecision.score.calibrated + 0.1,
+      `History score (${historyDecision.score.calibrated}) should be visibly boosted over base (${noHistoryDecision.score.calibrated})`
+    );
+    assert.ok(
+      historyDecision.tier !== noHistoryDecision.tier || historyDecision.score.calibrated > 0.6,
+      `Tier should ideally be elevated due to the extreme complexity in history`
+    );
+  });
+
+  it('连续的短句（低复杂度）历史不应显著影响得分', async () => {
+    const shortMsg = '继续';
+    const noHistoryDecision = await route(shortMsg, config);
+    const trivialHistory = ['好的', '没问题'];
+    const historyDecision = await route(shortMsg, config, trivialHistory);
+
+    // 断言：都是闲聊废话的背景不改变原有的低分
+    assert.ok(
+      Math.abs(historyDecision.score.calibrated - noHistoryDecision.score.calibrated) < 0.05,
+      'Score should barely move when history is completely trivial'
+    );
+  });
+});
+

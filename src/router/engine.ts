@@ -16,6 +16,7 @@ import { scoreDimensions } from './scorer';
 import { classifyTask } from './task-classifier';
 import { extractTraits, scoreModels, selectModel } from './model-matcher';
 import { extractSemanticSignals } from './semantic-signals';
+import { applyContextModifier } from './context';
 import type { LlmScorer } from './llm-scorer';
 
 // ── 边界检测 ────────────────────────────────────────────────────────────────
@@ -44,24 +45,32 @@ export function isNearBoundary(
  * @param config   解析后的插件配置
  * @returns        RouteDecision（tier、taskType、model、匹配细节、延迟）
  */
-export async function route(message: string, config: ResolvedConfig): Promise<RouteDecision> {
+export async function route(
+  message: string,
+  config: ResolvedConfig,
+  history: string[] = []
+): Promise<RouteDecision> {
   const t0 = performance.now();
   const scorer = config.llmScorerInstance ?? null;
 
-  // 1. 硬规则覆盖（始终优先）
+  // 1. 硬规则覆盖（始终优先，但也接受上下文补偿以避免短句误判）
   const override = checkOverrides(message);
   if (override) {
-    const score = buildOverrideScore(override.tier, override.rule);
+    let score = buildOverrideScore(override.tier, override.rule);
+    score = applyContextModifier(message, history, score, config.weights, config.thresholds);
     return finalize(score, config, message, t0, scorer);
   }
 
   // 2. 8 维度规则评分（本地，< 1ms）
   const dimensions = scoreDimensions(message, config.weights);
   const rawSum = dimensions.reduce((s, d) => s + d.weighted, 0);
-  const calibrated = calibrate(rawSum);
-  const ruleTier = scoreToTier(calibrated, config.thresholds);
+  let calibrated = calibrate(rawSum);
+  let ruleTier = scoreToTier(calibrated, config.thresholds);
 
-  const ruleScore: ScoreResult = { dimensions, rawSum, calibrated, tier: ruleTier };
+  let ruleScore: ScoreResult = { dimensions, rawSum, calibrated, tier: ruleTier };
+
+  // === Phase 1: Context Awareness 历史上下文修饰 ===
+  ruleScore = applyContextModifier(message, history, ruleScore, config.weights, config.thresholds);
 
   // 3. 条件触发 LLM 评分（仅在边界区间且 LLM 已启用时）
   if (scorer && config.llmScoring?.enabled) {
@@ -86,15 +95,24 @@ export async function route(message: string, config: ResolvedConfig): Promise<Ro
 /**
  * 仅评分（不解析模型）。用于测试/调试。
  */
-export function scoreOnly(message: string, config: ResolvedConfig): ScoreResult {
+export function scoreOnly(
+  message: string,
+  config: ResolvedConfig,
+  history: string[] = []
+): ScoreResult {
   const override = checkOverrides(message);
-  if (override) return buildOverrideScore(override.tier, override.rule);
+  if (override) {
+    const score = buildOverrideScore(override.tier, override.rule);
+    return applyContextModifier(message, history, score, config.weights, config.thresholds);
+  }
 
   const dimensions = scoreDimensions(message, config.weights);
   const rawSum = dimensions.reduce((s, d) => s + d.weighted, 0);
-  const calibrated = calibrate(rawSum);
-  const tier = scoreToTier(calibrated, config.thresholds);
-  return { dimensions, rawSum, calibrated, tier };
+  let calibrated = calibrate(rawSum);
+  let tier = scoreToTier(calibrated, config.thresholds);
+
+  let baseScore = { dimensions, rawSum, calibrated, tier };
+  return applyContextModifier(message, history, baseScore, config.weights, config.thresholds);
 }
 
 // ── 分数融合 ────────────────────────────────────────────────────────────────
@@ -130,12 +148,12 @@ function mergeScores(
  * 参数经网格搜索优化（k=8, midpoint=0.18）。
  * S 曲线在中间区间提供更好的 tier 分辨力。
  */
-function calibrate(x: number): number {
+export function calibrate(x: number): number {
   return 1 / (1 + Math.exp(-8 * (x - 0.18)));
 }
 
 /** 将 calibrated 分数映射到 tier。 */
-function scoreToTier(
+export function scoreToTier(
   score: number,
   thresholds: [number, number, number, number] = DEFAULT_THRESHOLDS,
 ): Tier {
@@ -154,10 +172,17 @@ function buildOverrideScore(tier: Tier, rule: string): ScoreResult {
     weight: DEFAULT_WEIGHTS[dim],
     weighted: 0,
   }));
+  let calibrated = 0;
+  if (tier === Tier.TRIVIAL) calibrated = 0.05;
+  if (tier === Tier.SIMPLE) calibrated = 0.25;
+  if (tier === Tier.MODERATE) calibrated = 0.45;
+  if (tier === Tier.COMPLEX) calibrated = 0.65;
+  if (tier === Tier.EXPERT) calibrated = 0.95;
+
   return {
     dimensions,
-    rawSum: 0,
-    calibrated: 0,
+    rawSum: calibrated,
+    calibrated,
     tier,
     overrideApplied: rule,
   };

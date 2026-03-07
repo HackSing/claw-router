@@ -23,6 +23,7 @@
     "test:verbose": "npx tsx --test test/*.test.ts 2>&1"
   },
   "devDependencies": {
+    "@types/node": "^25.3.5",
     "tsx": "^4.21.0",
     "typescript": "^5.9.3"
   },
